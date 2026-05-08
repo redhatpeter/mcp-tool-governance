@@ -1,0 +1,95 @@
+<!--
+  MCP-server-scoped APIM policy: canonical-name rewrite for tools/call.
+
+  Source of truth: docs/ARCHITECTURE.md §15.
+  Attach in Azure Portal:
+    APIs → MCP Servers → <server> → MCP → Policies (replaces the empty <inbound>).
+  Prerequisites: see apim/policies/README.md.
+-->
+<policies>
+  <inbound>
+    <base />
+
+    <!-- 1. AuthN -->
+    <validate-jwt header-name="Authorization" require-scheme="Bearer" failed-validation-httpcode="401">
+      <openid-config url="https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration" />
+      <required-claims>
+        <claim name="aud"><value>api://mcp-gateway</value></claim>
+      </required-claims>
+    </validate-jwt>
+
+    <!-- 2. Throttle -->
+    <rate-limit-by-key calls="60" renewal-period="60"
+                       counter-key="@(context.Subscription?.Id ?? context.Request.IpAddress)" />
+
+    <!-- 3. Only act on tools/call frames -->
+    <set-variable name="rpcBody" value="@(context.Request.Body.As<JObject>(preserveContent: true))" />
+    <set-variable name="rpcMethod" value="@(((JObject)context.Variables["rpcBody"])["method"]?.ToString())" />
+
+    <choose>
+      <when condition="@((string)context.Variables["rpcMethod"] == "tools/call")">
+
+        <set-variable name="requestedTool"
+                      value="@(((JObject)context.Variables["rpcBody"])["params"]?["name"]?.ToString())" />
+
+        <!-- 3a. APIM-internal cache (60s TTL) -->
+        <cache-lookup-value
+            key="@("canon:" + (string)context.Variables["requestedTool"])"
+            variable-name="canonicalTool" />
+
+        <!-- 3b. On miss, call Cosmos with managed identity -->
+        <choose>
+          <when condition="@(!context.Variables.ContainsKey("canonicalTool"))">
+            <authentication-managed-identity resource="https://cosmos.azure.com"
+                                             output-token-variable-name="cosmosAadToken" />
+            <send-request mode="new" response-variable-name="cosmosResp" timeout="2" ignore-error="true">
+              <set-url>@($"https://cosmos-ws.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs/{(string)context.Variables["requestedTool"]}")</set-url>
+              <set-method>GET</set-method>
+              <set-header name="Authorization" exists-action="override">
+                <value>@("type=aad&ver=1.0&sig=" + (string)context.Variables["cosmosAadToken"])</value>
+              </set-header>
+              <set-header name="x-ms-version" exists-action="override">
+                <value>2018-12-31</value>
+              </set-header>
+              <set-header name="x-ms-documentdb-partitionkey" exists-action="override">
+                <value>@($"[\"{(string)context.Variables["requestedTool"]}\"]")</value>
+              </set-header>
+            </send-request>
+
+            <!-- Fail open: if Cosmos errors or doc missing, keep the requested name -->
+            <set-variable name="canonicalTool"
+              value="@{
+                var resp = (IResponse)context.Variables.GetValueOrDefault("cosmosResp");
+                if (resp == null || resp.StatusCode >= 400) return (string)context.Variables["requestedTool"];
+                var doc = resp.Body.As<JObject>();
+                return doc["primary"]?["name"]?.ToString() ?? (string)context.Variables["requestedTool"];
+              }" />
+
+            <cache-store-value
+                key="@("canon:" + (string)context.Variables["requestedTool"])"
+                value="@((string)context.Variables["canonicalTool"])"
+                duration="60" />
+          </when>
+        </choose>
+
+        <!-- 3c. Rewrite the JSON-RPC body if alias != canonical -->
+        <choose>
+          <when condition="@((string)context.Variables["canonicalTool"] != (string)context.Variables["requestedTool"])">
+            <set-body>@{
+              var body = (JObject)context.Variables["rpcBody"];
+              body["params"]["name"] = (string)context.Variables["canonicalTool"];
+              return body.ToString();
+            }</set-body>
+            <set-header name="x-mcp-canonical-rewrite" exists-action="override">
+              <value>@($"{context.Variables["requestedTool"]} -> {context.Variables["canonicalTool"]}")</value>
+            </set-header>
+          </when>
+        </choose>
+
+      </when>
+    </choose>
+  </inbound>
+  <backend><base /></backend>
+  <outbound><base /></outbound>
+  <on-error><base /></on-error>
+</policies>
