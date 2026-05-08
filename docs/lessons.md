@@ -341,3 +341,282 @@ names are advertised.
 **Open question:** can the auto-rename be disabled via APIM extension
 properties (`x-ms-mcp-tool-name`?) or a Terraform `displayName` override
 on the MCP-server tool resource? Investigate before redesigning.
+
+---
+
+## 2026-05-08 — Wire-name collision dispatches deterministically; collided operation is silently unreachable
+
+**Experiment:** Called `tools/call name=createCustomer` against `messy-mcp`
+three times. Watched ngrok request inspector to see which backend path
+APIM dispatched to.
+
+`createCustomer` is the wire name produced by APIM camelCasing **two**
+distinct operations:
+- `createCustomer` (operationId, camelCase original)  → `/messy/createCustomer`
+- `Create_Customer` (operationId, PascalCase + underscore) → `/messy/Create_Customer`
+
+**Result:** All three calls dispatched to `/messy/Create_Customer`.
+None reached `/messy/createCustomer`. The behavior is **deterministic**
+across attempts — not random / round-robin / load-balanced. Likely
+alphabetical-by-operationId (`Create_Customer` sorts before
+`createCustomer` in ASCII because uppercase C precedes lowercase c).
+
+**Implications:**
+
+1. **Layer 2 (dispatch) confirmed broken under collision.** Even if the
+   LLM picks the "right" tool based on rich descriptions — even if the
+   MCP host preserves both tool entries in its tool list — the gateway
+   still routes both to the same backend. **Descriptions cannot recover
+   from a name collision.** The name *is* the dispatch key.
+2. **One operation is silently unreachable.** The runner-up in the
+   collision is dead: no error, no log, no warning. It's deployed,
+   discoverable in the source spec, listed in the Portal Tools blade,
+   and reachable via direct HTTP call to its `/messy/createCustomer`
+   path — but **not callable through the MCP server it was supposed
+   to be exposed by**. This is the most dangerous failure mode we've
+   seen: a deployed-but-unreachable tool that looks healthy by every
+   normal metric.
+3. **Determinism = silent regression risk.** Because the choice is
+   stable (alphabetical), things will work consistently in dev/test —
+   right up until someone renames an operation in a way that changes
+   the alphabetical winner. The "working" tool can flip overnight with
+   no code change to the failing path.
+
+**For the PoC demo:** This is the strongest single piece of evidence
+for governance. We can show: "Here's an MCP server with 13 declared
+operations. Only 12 are advertised. Only 12 are callable. One is
+**deployed but functionally dead** — and you cannot tell from any
+Portal screen, log, or metric that's the case. Without the registry
++ post-normalization collision check, you ship this to prod."
+
+**Action items:**
+- Demo script: include a `tools/call` against the collided wire name
+  + show ngrok dispatching to one path while the other is starved.
+- L1 CI gate must catch this *before* import. Spec authors do not see
+  it; gateway operators do not see it; only post-normalization analysis
+  catches it.
+
+---
+
+## 2026-05-08 — APIM-MCP forwards empty body to backend on POST tools/call
+
+**Symptom:** During the dispatch experiment, every POST operation we
+called via `tools/call` received an empty body at the backend. FastAPI
+responded with 422 `json_invalid: Expecting value` and `input: {}`.
+
+GET operations worked (e.g. `tools/call name=lookup args={q:"acme"}` →
+`/messy/lookup?q=acme` 200), because GET parameters travel as query
+strings which APIM apparently serializes correctly.
+
+**Likely cause:** APIM is not lifting `params.arguments` from the
+JSON-RPC envelope into the HTTP request body when dispatching to the
+backend operation. Or it's mapping `arguments` only to query/path
+parameters and not to `requestBody`.
+
+**Open questions:**
+- Is this configurable per-operation (some APIM property)?
+- Is there a bind-by-name vs bind-by-position issue between the
+  MCP `arguments` object and the OpenAPI `requestBody.content.application/json.schema`?
+- Does the `set-body` policy need to be added to the MCP server's
+  inbound policy chain to map JSON-RPC `params.arguments` → backend
+  body? If yes, this is a *required* policy for any MCP server that
+  exposes POST/PUT/PATCH operations — and it's not documented anywhere
+  we can find.
+
+**For the PoC:** Need to resolve before the canonical-rewrite demo
+because rewriting the name is pointless if the body never arrives.
+Three avenues to try:
+1. Inspect what an existing working APIM-MCP example does (search
+   azure-samples for a POST tool example).
+2. Add a small inbound `set-body` policy that constructs the backend
+   body from `context.Request.Body` (the MCP envelope).
+3. Try declaring the body parameters as individual query parameters
+   in the OpenAPI spec instead of a `requestBody` object.
+
+**Severity:** Blocker for any POST-based PoC scenario, including
+`finance_customer_create`, `finance_invoice_create`,
+`finance_payment_approve`. GET-based scenarios (`finance_quote_get`,
+`finance_invoice_list`, `finance_customer_search`) are unaffected.
+
+---
+
+## 2026-05-08 — Empty-body finding is a KNOWN APIM bug, only affects v1 SKUs
+
+**Update to previous finding.** Researched Microsoft Q&A and found this
+is a **known, acknowledged APIM bug** with an official explanation and
+a workaround.
+
+**Source:** https://learn.microsoft.com/en-us/answers/questions/4371821/
+
+> "Hi folks, sincere apologies for the technical difficulties you are
+> experiencing. This bug is a known issue which we fixed in October.
+> However, due to varying release cycles and timelines for the different
+> APIM SKUs, this fix hasn't yet been rolled out across all APIM tiers.
+> ... we are currently in the process of rolling out a new update
+> containing the aforementioned fix for v1 SKUs (Basic, Standard,
+> Premium) under the 'AI Gateway Early' update group ... The fix has
+> already been rolled out for some time now to our v2 offerings
+> (Basicv2, Standardv2, Premiumv2)."
+> — Bruce Moe, Microsoft Employee, 2025-12-16
+
+**Affected tiers:** Developer, Basic, Standard, Premium (v1 / "classic").
+**Already fixed in:** Basicv2, Standardv2, Premiumv2.
+
+**Our APIM (`apimopenai99`) is Developer (classic)** — directly affected.
+
+**Two paths forward:**
+
+1. **Apply the documented workaround** (recommended for the PoC):
+
+   ```xml
+   <policies>
+     <inbound>
+       <base />
+       <set-body>@(context.Request.Body.As<JObject>()["params"]["arguments"].ToString())</set-body>
+     </inbound>
+     ...
+   </policies>
+   ```
+
+   This extracts `params.arguments` from the JSON-RPC envelope and uses
+   it as the backend HTTP body. It must be applied at the **MCP server
+   policy** level (not the API level — the API is the auto-generated MCP
+   wrapper that we don't edit directly).
+
+2. **Opt the APIM instance into the "AI Gateway Early" update group**
+   per [Configure service update settings](https://learn.microsoft.com/en-us/azure/api-management/configure-service-update-settings).
+   Per Bruce Moe (Dec 2025), the fix should land "by end of next week"
+   for v1 SKUs in that channel. Effective release date unclear today.
+
+**Decision for PoC:** Apply the workaround as part of the canonical-rewrite
+policy. This is actually a useful demo point — it's a real-world example
+of why governance teams want a **policy seam at the gateway**: an APIM
+bug across hundreds of MCP-exposed APIs would otherwise need to be
+patched individually. With our pattern, one policy fragment fixes it
+fleet-wide.
+
+**For ARCHITECTURE.md:** Add a sub-section to §2 (architecture) or §15
+(policy) noting this body-unwrap requirement. Strip-down version of the
+policy:
+
+```xml
+<!-- Required workaround on v1 APIM tiers as of 2026-05-08:
+     APIM-MCP forwards an empty body to backend on POST tools/call.
+     Extract params.arguments and forward as the backend body. -->
+<set-body>@(context.Request.Body.As<JObject>()["params"]["arguments"].ToString())</set-body>
+```
+
+---
+
+## 2026-05-08 (cont.) — The community workaround does NOT work for APIM-MCP
+
+**Tested empirically.** Attached the suggested unwrap policy to
+`governed-mcp` (the MCP-typed API) via ARM:
+
+```xml
+<inbound>
+  <base />
+  <set-body><![CDATA[@{
+      var body = context.Request.Body.As<JObject>(preserveContent: true);
+      if (body != null && (string)body["method"] == "tools/call")
+          return body["params"]["arguments"].ToString();
+      return context.Request.Body.As<string>(preserveContent: true);
+  }]]></set-body>
+</inbound>
+```
+
+**Result:** ALL operations (GET and POST) return 500 Internal Server Error.
+
+**Diagnosis:** The MCP server's policy chain runs against the inbound
+JSON-RPC envelope **before** APIM-MCP's own routing/translation layer
+kicks in. The `<set-body>` mutates the body that APIM-MCP itself needs
+to parse (`{"jsonrpc":..., "method":"tools/call", "params":{...}}`).
+After we unwrap, APIM-MCP can no longer read `params.name` to pick the
+backend operation, so it 500s.
+
+The Q&A thread shows the same outcome — Chris Hammond (the original
+reporter) tried the unwrap policy and also hit a 500. Krishna's
+suggestion was theoretical and was never confirmed working by any
+non-Microsoft user. Bruce Moe (Microsoft Employee) later acknowledged
+the bug as a platform-side issue that needed a platform-side fix.
+
+**Conclusion:** There is **no working policy-level workaround on v1 SKUs**.
+Three real options:
+
+| Option | Pros | Cons |
+| --- | --- | --- |
+| **A. Wait for v1 rollout** | Zero work, "right" fix | ETA "end of next week" per Microsoft Dec 2025 — may have landed already; need to retest periodically |
+| **B. Migrate APIM to v2 SKU** | Fix is already deployed | Cost + migration effort; v2 SKUs (Basicv2/Standardv2/Premiumv2) only |
+| **C. PoC scope adjustment** | Demo proceeds | GET-only canonical-rewrite scenarios (still plenty to show) |
+
+**Decision for now:** Option C for the demo, but also **periodically retest
+A** — the fix may have rolled to our instance since Dec 2025. As of today
+(2026-05-08) we still see the bug, so the rollout to Developer SKU has
+not landed for us.
+
+**Demo impact:** Of 8 governed ops, 5 are GET (`finance_customer_get`,
+`finance_customer_search`, `finance_invoice_get`, `finance_invoice_list`,
+`finance_quote_get`) — plenty for the canonical-rewrite + alias demo. The
+3 POST ops (`finance_customer_create`, `finance_invoice_create`,
+`finance_payment_approve`) become "demonstrated as discoverable but
+currently blocked by APIM platform bug."
+
+This is itself a useful narrative point: **the gateway is software with
+bugs, and a governance pattern that puts a policy seam between the LLM
+and the backend gives you a place to add platform-bug workarounds when
+they ship — without changing every backend.**
+
+---
+
+## 2026-05-08 — APIM-MCP POST bug is *not* the empty-body bug; it's last-write-wins, and it reproduces on Basic v2
+
+**What we actually found (correcting earlier hypothesis):** The bug is
+**not** "empty body forwarded to backend." We were misreading the
+FastAPI error. `"input":{}` in the pydantic error object is the
+*context*, not the raw bytes. Inspecting the wire with the ngrok
+inspector (`http://127.0.0.1:4040/api/requests/http`) revealed the
+actual symptom:
+
+For `tools/call` with `arguments = {"name":"X","email":"Y","tier":"gold"}`
+APIM forwards a body of exactly **4 bytes: `gold`** — only the *last*
+argument's value, no JSON envelope, no field names. Last-write-wins
+serialization.
+
+**Cross-tier confirmation:** Spun up a second APIM instance
+`ai-gateway-general` (RG `rg-general-ai`, **Basic v2**, **West US**) —
+the SKU+region Microsoft claims has the empty-body fix from
+`release-service-2026-03` (Q&A 4371821). Imported the same
+`finance-governed` OpenAPI, exposed the same MCP server, ran the same
+`financeCustomerCreate` payload. Backend received: `body(len=4): 'gold'`.
+**Identical symptom.**
+
+**Implications:**
+1. This is **not** the empty-body bug fixed in `release-service-2026-03`.
+   It is a **separate (or regressed) bug** in APIM's MCP request-body
+   serialization path.
+2. Affects **both v1 (Developer/stv2.1) and v2 (Basic v2) tiers**, in
+   **two different regions**. Tier migration is **not** a workaround.
+3. The earlier "Option B: migrate to v2" in the previous lesson is
+   **invalid** — strike it. Only Options A (wait) and C (GET-only demo)
+   remain viable.
+4. The bug report we considered duplicative of Q&A 4371821 is actually
+   a **distinct bug**. Filed as Azure-Samples/AI-Gateway issue **#315**.
+
+**Smoking-gun repro (works on any APIM with an MCP server pointing at a
+backend you can sniff):**
+
+```bash
+curl -X POST "$MCP_URL" \
+  -H "Ocp-Apim-Subscription-Key: $KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call",
+       "params":{"name":"financeCustomerCreate",
+                 "arguments":{"name":"X","email":"Y","tier":"gold"}}}'
+# Backend receives body: 'gold' (4 bytes). Expected: full JSON object.
+```
+
+**Methodological lesson:** When a backend reports "JSON decode error,"
+**always inspect the actual wire bytes** before theorizing about the
+gateway. A 1-line ngrok session would have saved us hours of pursuing
+the wrong root-cause hypothesis.
