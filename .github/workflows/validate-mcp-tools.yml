@@ -1,0 +1,55 @@
+name: validate-mcp-tools
+
+# Layer 1 design-time gate: blocks PRs that introduce naming-standard
+# violations in OpenAPI specs destined for APIM-MCP exposure. See
+# docs/ARCHITECTURE.md §13 and tools-cli/lint.py for rules.
+
+on:
+  pull_request:
+    paths:
+      - "apim/openapi/**"
+      - "tools-cli/lint.py"
+      - ".github/workflows/validate-mcp-tools.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apim/openapi/**"
+      - "tools-cli/lint.py"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # No pip deps — lint.py uses stdlib only.
+
+      - name: Run lint (errors only — block merges)
+        id: lint_errors
+        run: |
+          set -e
+          python tools-cli/lint.py --no-warn
+
+      - name: Run lint (full report — for the PR comment artifact)
+        if: always()
+        run: |
+          python tools-cli/lint.py --json > lint-report.json || true
+          python tools-cli/lint.py > lint-report.txt || true
+          echo "## L1 lint report" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat lint-report.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l1-lint-report
+          path: |
+            lint-report.json
+            lint-report.txt
