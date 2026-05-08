@@ -1,0 +1,61 @@
+<!--
+  governed-mcp smoke policy
+  ==========================
+  Minimal MCP-server-level policy for the Tool Governance PoC. Apply via:
+    Portal -> apimopenai99 -> MCP Servers -> governed-mcp -> Policies blade
+
+  STATUS (2026-05-08): This workaround DOES NOT WORK. Kept as evidence.
+  See docs/lessons.md "APIM-MCP POST bug is *not* the empty-body bug".
+  The <set-body> below mutates the JSON-RPC envelope that APIM-MCP itself
+  must parse to route the call, so all ops 500. Reverted on apimopenai99.
+  Bug also reproduces on Basic v2 (West US) - filed as
+  Azure-Samples/AI-Gateway issue #315.
+
+  Includes (as originally attempted):
+  - Body-unwrap (params.arguments -> backend body). Broken; see above.
+  - A header echo so we can confirm the policy actually ran.
+
+  NOT yet included (added in later iterations):
+  - validate-jwt
+  - rate-limit-by-key
+  - Cosmos canonical_map alias rewrite
+-->
+<policies>
+    <inbound>
+        <base />
+
+        <!-- Workaround: unwrap MCP JSON-RPC envelope and forward only
+             params.arguments as the backend body. Only matters for POST/PUT/PATCH;
+             GET ops carry args in the URL and are unaffected.
+             CDATA needed because the C# expression contains <, >, &&. -->
+        <set-body><![CDATA[@{
+            try {
+                var body = context.Request.Body.As<JObject>(preserveContent: true);
+                if (body != null
+                    && body["method"] != null
+                    && (string)body["method"] == "tools/call"
+                    && body["params"] != null
+                    && body["params"]["arguments"] != null) {
+                    return body["params"]["arguments"].ToString();
+                }
+                return context.Request.Body.As<string>(preserveContent: true);
+            } catch (Exception) {
+                return context.Request.Body.As<string>(preserveContent: true);
+            }
+        }]]></set-body>
+
+        <!-- Marker header so we can prove the policy ran -->
+        <set-header name="x-mcp-policy" exists-action="override">
+            <value>governed-smoke-v1</value>
+        </set-header>
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>
