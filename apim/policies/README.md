@@ -20,40 +20,49 @@ on `governed/mcp`, once on each `<domain>-raw/mcp`, etc.).
 ## Prerequisites
 
 The policy assumes the following are configured on the APIM instance hosting
-the MCP server. PoC target pairing:
+the MCP server. PoC pairing:
 
-- **APIM:** `apimopenai99`
-- **Cosmos:** `cosmoslab82658` (database `governance`, container `mcp-canonical-map`)
+- **APIM:** `apimopenai99` (RG `Default-ActivityLogAlerts`, eastus)
+- **Cosmos:** `cosmoslab82658` (RG `cosmos-ws`, westus) — DB `governance`, container `mcp-canonical-map` (PK `/canonical_id`, 400 RU/s)
 
-> **Status:** APIM `apimopenai99` and Cosmos `cosmoslab82658` are **not yet
-> paired**. Steps 1–2 below establish the pairing (system-assigned MI on APIM
-> + Cosmos data-plane role assignment). Run them in order before attaching the
-> policy.
+> **Status (2026-05-08):** Pairing is **DONE**. APIM system-assigned MI
+> `29569271-d247-4907-a841-feb848f4016f` holds **Cosmos DB Built-in Data
+> Reader** scoped to `/dbs/governance/colls/mcp-canonical-map`. The DB and
+> container exist and are empty — seed canonical_map docs before smoke testing.
+
+The commands below are kept for reference / re-deploy in another environment.
 
 ### 1. APIM system-assigned managed identity
 
 ```bash
 APIM_NAME=apimopenai99
-APIM_RG=<your-rg>
+APIM_RG=Default-ActivityLogAlerts
 
 az apim update -n "$APIM_NAME" -g "$APIM_RG" --set identity.type=SystemAssigned
 APIM_MI=$(az apim show -n "$APIM_NAME" -g "$APIM_RG" --query identity.principalId -o tsv)
 echo "APIM MI: $APIM_MI"
 ```
 
-### 2. Cosmos data-plane role assignment
-
-The policy reads from container `mcp-canonical-map` in database `governance`
-on Cosmos account `cosmoslab82658`. APIM's MI needs the built-in **Cosmos DB
-Data Reader** role (`00000000-0000-0000-0000-000000000001`):
+### 2. Cosmos database, container, and data-plane role assignment
 
 ```bash
 COSMOS_ACCOUNT=cosmoslab82658
-COSMOS_RG=<cosmos-rg>
+COSMOS_RG=cosmos-ws
 
+# DB + container (PK /canonical_id, 400 RU/s shared throughput)
+az cosmosdb sql database create \
+  --account-name "$COSMOS_ACCOUNT" -g "$COSMOS_RG" \
+  --name governance --throughput 400
+
+az cosmosdb sql container create \
+  --account-name "$COSMOS_ACCOUNT" -g "$COSMOS_RG" \
+  --database-name governance \
+  --name mcp-canonical-map \
+  --partition-key-path /canonical_id
+
+# Built-in Cosmos DB Data Reader (00000000-0000-0000-0000-000000000001)
 az cosmosdb sql role assignment create \
-  --account-name "$COSMOS_ACCOUNT" \
-  --resource-group "$COSMOS_RG" \
+  --account-name "$COSMOS_ACCOUNT" -g "$COSMOS_RG" \
   --scope "/dbs/governance/colls/mcp-canonical-map" \
   --principal-id "$APIM_MI" \
   --role-definition-id 00000000-0000-0000-0000-000000000001
