@@ -20,7 +20,15 @@ on `governed/mcp`, once on each `<domain>-raw/mcp`, etc.).
 ## Prerequisites
 
 The policy assumes the following are configured on the APIM instance hosting
-the MCP server. PoC target: **`apimopenai99`**.
+the MCP server. PoC target pairing:
+
+- **APIM:** `apimopenai99`
+- **Cosmos:** `cosmoslab82658` (database `governance`, container `mcp-canonical-map`)
+
+> **Status:** APIM `apimopenai99` and Cosmos `cosmoslab82658` are **not yet
+> paired**. Steps 1–2 below establish the pairing (system-assigned MI on APIM
+> + Cosmos data-plane role assignment). Run them in order before attaching the
+> policy.
 
 ### 1. APIM system-assigned managed identity
 
@@ -36,11 +44,11 @@ echo "APIM MI: $APIM_MI"
 ### 2. Cosmos data-plane role assignment
 
 The policy reads from container `mcp-canonical-map` in database `governance`
-on Cosmos account `cosmos-ws`. APIM's MI needs the built-in **Cosmos DB Data
-Reader** role (`00000000-0000-0000-0000-000000000001`):
+on Cosmos account `cosmoslab82658`. APIM's MI needs the built-in **Cosmos DB
+Data Reader** role (`00000000-0000-0000-0000-000000000001`):
 
 ```bash
-COSMOS_ACCOUNT=cosmos-ws
+COSMOS_ACCOUNT=cosmoslab82658
 COSMOS_RG=<cosmos-rg>
 
 az cosmosdb sql role assignment create \
@@ -61,7 +69,7 @@ Before pasting into the Portal, replace these literal placeholders:
 |---|---|---|
 | `<tenant-id>` | Your Entra tenant GUID | Used in the OpenID metadata URL. |
 | `api://mcp-gateway` | Your registered API audience | The `aud` claim required on inbound JWTs. |
-| `cosmos-ws.documents.azure.com` | Your Cosmos account hostname | Already correct if you reused `cosmos-ws` per the architecture. |
+| `cosmoslab82658.documents.azure.com` | Cosmos account hostname | Already set to the PoC pairing target. Change if you point at a different Cosmos account. |
 
 For a production-grade flow these become **APIM Named Values** (or Key Vault
 references) and the policy uses `{{tenant-id}}` etc. — see ARCHITECTURE §24
