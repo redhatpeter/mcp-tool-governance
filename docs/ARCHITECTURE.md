@@ -33,6 +33,8 @@
 - [1. Background \& Problem Statement](#1-background--problem-statement)
 - [2. POC Objectives \& Success Criteria](#2-poc-objectives--success-criteria)
 - [3. Scope (In / Out)](#3-scope-in--out)
+  - [3.1 Feasible PoC Scope — the smart path to "workable"](#31-feasible-poc-scope--the-smart-path-to-workable)
+  - [3.2 Authored name vs. wire name (APIM-MCP naming model)](#32-authored-name-vs-wire-name-apim-mcp-naming-model)
 - [4. High-Level Architecture](#4-high-level-architecture)
   - [4.1 Topology options & upgrade path](#41-topology-options--upgrade-path)
 - [5. Three-Layer Governance Model](#5-three-layer-governance-model)
@@ -65,12 +67,13 @@
 
 (Identical to v2 — the problem hasn't changed; the implementation has.)
 
-As more APIs are exposed through APIM and surfaced as MCP tools, four problems compound quickly:
+As more APIs are exposed through APIM and surfaced as MCP tools, **five** problems compound quickly:
 
 1. **Name collisions** — `createCustomer`, `CreateCustomer`, `customer_create`, `CustomerAPI_Final_v3` all do the same thing. Agents pick one and execute silently.
 2. **Semantic duplicates** — `customer.find`, `customer.search`, `customer.lookup` look different but overlap behaviorally.
 3. **Tool overloading** — three versions of `invoice_create` with different schemas under the same name.
 4. **Ungrouped tools** — flat names like `lookup`, `create`, `list` with no domain prefix; agents can't disambiguate.
+5. **Gateway naming drift** — APIM-MCP **rewrites** the OpenAPI operation summary into a wire tool name using its own normalization rules (split on non-identifier chars, lowercase first token, TitleCase the rest). So an authored summary `finance_quote_get` is exposed to the LLM as `financeQuoteGet`. The name the developer wrote, the name the LLM sees, and the name a governance policy must match against are three different strings unless you account for it. Discovered empirically on `apimopenai99` — see [lessons.md](lessons.md) and §3 below.
 
 **What V3 changes:** in v2 each backend team published an MCP server. In V3 the moment any team imports a REST API into APIM, that API can be **flipped on as an MCP server with a single click** — the catalog grows even faster, and the governance problem is even more urgent.
 
@@ -153,6 +156,39 @@ The full plan is intentionally broader than what's needed to *prove the idea*. T
 6. The APIM policy reads Cosmos via **managed identity** — no Cosmos keys appear in policy or Key Vault.
 
 If those six hold, the PoC has cleared the bar. Anything else is gravy.
+
+### 3.2 Authored name vs. wire name (APIM-MCP naming model)
+
+A subtle but operationally critical fact discovered during PoC build-out: when APIM exposes a REST API as an MCP server, the **MCP tool name the LLM sees is not the OpenAPI `operationId` and not the URL path** — it is the OpenAPI **operation `summary`**, normalized through APIM's own naming rules.
+
+The normalization (verified against `apimopenai99/governed-mcp` 2026-05-08, fingerprint matches .NET `JsonNamingPolicy.CamelCase`):
+
+1. Split the summary on any non-identifier character (`_`, `-`, space, `.`).
+2. Lowercase the **first** token.
+3. TitleCase every subsequent token.
+4. Concatenate.
+
+| Authored OpenAPI `summary` | APIM-MCP wire tool name |
+|---|---|
+| `finance_quote_get` | `financeQuoteGet` |
+| `finance_customer_search` | `financeCustomerSearch` |
+| `Get Finance Invoice` | `getFinanceInvoice` |
+| `payment.approve` | `paymentApprove` |
+
+**Why this matters for governance:**
+- The **canonical_id in Cosmos must equal the wire name** (or be reachable through an alias whose `id` equals the wire name) — otherwise the L3 policy's `send-request` to `/dbs/.../docs/{requestedTool}` will 404 and the policy will fail-open through to whatever the LLM sent.
+- The **L1 lint rule** (§9 / §13) must enforce naming standards on the *summary*, not just the operationId, because the summary is the load-bearing string at runtime.
+- **Two operations with different paths but the same summary collide** at the MCP wire layer. APIM-MCP picks one and silently drops the other. (Observed on `messy-mcp`: 13 declared ops → 12 surfaced.) This is failure mode #5 (gateway naming drift) from §1.
+
+**The three names to keep straight:**
+
+| Name | Where it lives | Example | Used by |
+|---|---|---|---|
+| **Authored name** | OpenAPI `summary` field | `finance_quote_get` | Developer, L1 lint, design review |
+| **Wire name** | What APIM-MCP advertises in `tools/list` | `financeQuoteGet` | LLM, L3 policy `params.name`, Cosmos doc id |
+| **Canonical id** | Cosmos `mcp-canonical-map` doc | `financeQuoteGet` (same as wire, by convention) | L3 rewrite target, eval harness, L2 election record |
+
+The PoC convention is: **canonical_id ≡ wire name**. Aliases are stored as additional Cosmos docs whose `id` equals the alias and whose `primary.name` points back to the wire name. See [`tools-cli/seed_canonical_map.py`](../tools-cli/seed_canonical_map.py) for the seeding pattern and [`apim/policies/canonical-rewrite-smoke.policy.xml`](../apim/policies/canonical-rewrite-smoke.policy.xml) for the consuming policy.
 
 ---
 
