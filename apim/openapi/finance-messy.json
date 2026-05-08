@@ -1,0 +1,965 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Finance API (messy \u2014 anti-pattern reference)",
+        "description": "Deliberately badly-designed finance API used as a NEGATIVE control for the MCP Tool Governance PoC. Demonstrates the four failure modes: name collisions, semantic duplicates, schema overloads, and ungrouped generic verbs. NOT FOR PRODUCTION USE.",
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/messy/createCustomer": {
+            "post": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "createCustomer",
+                "operationId": "createCustomer",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateCustomerBody"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CustomerOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Create a customer. (camelCase variant \u2014 collides with three other customer-create tools on this server.)"
+            }
+        },
+        "/messy/Create_Customer": {
+            "post": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "Create_Customer",
+                "operationId": "Create_Customer",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateCustomerBody"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CustomerOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Create a customer. (PascalCase + underscore variant \u2014 collides with three other customer-create tools on this server.)"
+            }
+        },
+        "/messy/customer_create": {
+            "post": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "customer_create",
+                "operationId": "customer_create",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateCustomerBody"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CustomerOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Create a customer. (snake_case variant, no domain prefix \u2014 collides with three other customer-create tools on this server.)"
+            }
+        },
+        "/messy/CustomerAPI_Final_v3": {
+            "post": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "CustomerAPI_Final_v3",
+                "operationId": "CustomerAPI_Final_v3",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateCustomerBody"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CustomerOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Create a customer. (Legacy versioned name from a deprecated API \u2014 collides with three other customer-create tools on this server.)"
+            }
+        },
+        "/messy/customer_find": {
+            "get": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "customer_find",
+                "operationId": "customer_find",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "search term",
+                            "default": "",
+                            "title": "Q"
+                        },
+                        "description": "search term"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CustomerOut"
+                                    },
+                                    "title": "Response Customer Find"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Find customers matching a term. Parameter: q. (Semantic duplicate of customer_search and customer_lookup \u2014 the LLM cannot tell which to pick.)"
+            }
+        },
+        "/messy/customer_search": {
+            "get": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "customer_search",
+                "operationId": "customer_search",
+                "parameters": [
+                    {
+                        "name": "query",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "search term",
+                            "default": "",
+                            "title": "Query"
+                        },
+                        "description": "search term"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CustomerOut"
+                                    },
+                                    "title": "Response Customer Search"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Search the customer list. Parameter: query. (Semantic duplicate of customer_find and customer_lookup \u2014 same intent, different parameter name.)"
+            }
+        },
+        "/messy/customer_lookup": {
+            "get": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "customer_lookup",
+                "operationId": "customer_lookup",
+                "parameters": [
+                    {
+                        "name": "term",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "search term",
+                            "default": "",
+                            "title": "Term"
+                        },
+                        "description": "search term"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CustomerOut"
+                                    },
+                                    "title": "Response Customer Lookup"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Look up a customer by partial match. Parameter: term. (Semantic duplicate of customer_find and customer_search \u2014 same intent, different parameter name.)"
+            }
+        },
+        "/messy/invoice_create_v1": {
+            "post": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "invoice_create_v1",
+                "operationId": "invoice_create_v1",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/InvoiceCreateV1"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Create an invoice (v1 schema). Fields: customer_id, amount. (Overload variant \u2014 v1/v2/legacy share the name root but accept incompatible payloads.)"
+            }
+        },
+        "/messy/invoice_create_v2": {
+            "post": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "invoice_create_v2",
+                "operationId": "invoice_create_v2",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/InvoiceCreateV2"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Create an invoice (v2 schema). Fields: customer_id, amount, currency, due_date. (Overload variant \u2014 v1/v2/legacy share the name root but accept incompatible payloads.)"
+            }
+        },
+        "/messy/invoice_create_legacy": {
+            "post": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "invoice_create_legacy",
+                "operationId": "invoice_create_legacy",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/InvoiceCreateLegacy"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Create an invoice (legacy schema). Fields: cust, total, ccy. (Overload variant with completely different field names than v1/v2.)"
+            }
+        },
+        "/messy/lookup": {
+            "get": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "lookup",
+                "operationId": "lookup",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "search term",
+                            "default": "",
+                            "title": "Q"
+                        },
+                        "description": "search term"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CustomerOut"
+                                    },
+                                    "title": "Response Lookup"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Generic lookup. (Ungrouped \u2014 no domain prefix; the LLM has no way to know this is a customer lookup until it reads the response.)"
+            }
+        },
+        "/messy/create": {
+            "post": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "create",
+                "operationId": "create",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateCustomerBody"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CustomerOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Generic create \u2014 actually creates a customer. (Ungrouped \u2014 name gives no hint of the domain.)"
+            }
+        },
+        "/messy/list": {
+            "get": {
+                "tags": [
+                    "messy"
+                ],
+                "summary": "list",
+                "operationId": "list",
+                "parameters": [
+                    {
+                        "name": "customer_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Customer Id"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Status"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Generic list \u2014 actually returns invoices. (Ungrouped \u2014 name gives no hint of the domain.)"
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "CreateCustomerBody": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "email": {
+                        "type": "string",
+                        "title": "Email"
+                    },
+                    "tier": {
+                        "type": "string",
+                        "title": "Tier",
+                        "default": "bronze"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "email"
+                ],
+                "title": "CreateCustomerBody"
+            },
+            "CreateCustomerRequest": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "examples": [
+                            "Acme Corp"
+                        ]
+                    },
+                    "email": {
+                        "type": "string",
+                        "title": "Email",
+                        "examples": [
+                            "ap@acme.example"
+                        ]
+                    },
+                    "tier": {
+                        "type": "string",
+                        "title": "Tier",
+                        "default": "bronze",
+                        "examples": [
+                            "bronze",
+                            "silver",
+                            "gold"
+                        ]
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "email"
+                ],
+                "title": "CreateCustomerRequest"
+            },
+            "CreateInvoiceRequest": {
+                "properties": {
+                    "customer_id": {
+                        "type": "string",
+                        "title": "Customer Id"
+                    },
+                    "amount": {
+                        "type": "number",
+                        "title": "Amount"
+                    },
+                    "currency": {
+                        "type": "string",
+                        "title": "Currency",
+                        "default": "USD"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "customer_id",
+                    "amount"
+                ],
+                "title": "CreateInvoiceRequest"
+            },
+            "Customer": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "email": {
+                        "type": "string",
+                        "title": "Email"
+                    },
+                    "tier": {
+                        "type": "string",
+                        "title": "Tier"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "email",
+                    "tier"
+                ],
+                "title": "Customer"
+            },
+            "CustomerOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "email": {
+                        "type": "string",
+                        "title": "Email"
+                    },
+                    "tier": {
+                        "type": "string",
+                        "title": "Tier"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "email",
+                    "tier"
+                ],
+                "title": "CustomerOut"
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "Invoice": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "customer_id": {
+                        "type": "string",
+                        "title": "Customer Id"
+                    },
+                    "amount": {
+                        "type": "number",
+                        "title": "Amount"
+                    },
+                    "currency": {
+                        "type": "string",
+                        "title": "Currency"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "customer_id",
+                    "amount",
+                    "currency",
+                    "status"
+                ],
+                "title": "Invoice"
+            },
+            "InvoiceCreateLegacy": {
+                "properties": {
+                    "cust": {
+                        "type": "string",
+                        "title": "Cust",
+                        "description": "customer id (legacy field name)"
+                    },
+                    "total": {
+                        "type": "number",
+                        "title": "Total",
+                        "description": "amount (legacy field name)"
+                    },
+                    "ccy": {
+                        "type": "string",
+                        "title": "Ccy",
+                        "description": "currency (legacy field name)",
+                        "default": "USD"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "cust",
+                    "total"
+                ],
+                "title": "InvoiceCreateLegacy",
+                "description": "Legacy schema: cust + total fields, different keys entirely."
+            },
+            "InvoiceCreateV1": {
+                "properties": {
+                    "customer_id": {
+                        "type": "string",
+                        "title": "Customer Id"
+                    },
+                    "amount": {
+                        "type": "number",
+                        "title": "Amount"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "customer_id",
+                    "amount"
+                ],
+                "title": "InvoiceCreateV1",
+                "description": "Old schema: customer_id + amount only."
+            },
+            "InvoiceCreateV2": {
+                "properties": {
+                    "customer_id": {
+                        "type": "string",
+                        "title": "Customer Id"
+                    },
+                    "amount": {
+                        "type": "number",
+                        "title": "Amount"
+                    },
+                    "currency": {
+                        "type": "string",
+                        "title": "Currency",
+                        "default": "USD"
+                    },
+                    "due_date": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Due Date"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "customer_id",
+                    "amount"
+                ],
+                "title": "InvoiceCreateV2",
+                "description": "New schema: adds currency + due_date."
+            },
+            "PaymentApproval": {
+                "properties": {
+                    "invoice_id": {
+                        "type": "string",
+                        "title": "Invoice Id"
+                    },
+                    "approved": {
+                        "type": "boolean",
+                        "title": "Approved"
+                    },
+                    "approver": {
+                        "type": "string",
+                        "title": "Approver"
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "title": "Timestamp"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "invoice_id",
+                    "approved",
+                    "approver",
+                    "timestamp"
+                ],
+                "title": "PaymentApproval"
+            },
+            "Quote": {
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "title": "Symbol"
+                    },
+                    "price": {
+                        "type": "number",
+                        "title": "Price"
+                    },
+                    "currency": {
+                        "type": "string",
+                        "title": "Currency"
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "title": "Timestamp"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "symbol",
+                    "price",
+                    "currency",
+                    "timestamp"
+                ],
+                "title": "Quote"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        }
+    },
+    "servers": [
+        {
+            "url": "REPLACE_WITH_NGROK_URL"
+        }
+    ]
+}
