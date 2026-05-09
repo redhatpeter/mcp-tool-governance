@@ -1,0 +1,149 @@
+name: similarity-check
+
+# L2 design-time gate: scores newly added OpenAPI operations against the
+# live MCP-tool fingerprint index in Azure AI Search. Flags would-be
+# semantic duplicates of canonical tools so reviewers can decide whether
+# to merge into an existing tool or proceed with a deliberate new one.
+#
+# See docs/ARCHITECTURE.md §3.3 and apps/dup-resolver/.
+
+on:
+  pull_request:
+    paths:
+      - "apim/openapi/**"
+      - "apps/dup-resolver/**"
+      - ".github/workflows/similarity-check.yml"
+
+jobs:
+  similarity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history for git diff against origin/main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Detect changed OpenAPI specs
+        id: detect
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          CHANGED=$(git diff --name-only "$BASE_SHA"...HEAD -- 'apim/openapi/*.json' || true)
+          echo "Changed specs:"
+          echo "$CHANGED"
+          {
+            echo "files<<EOF"
+            echo "$CHANGED"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+          if [ -z "$CHANGED" ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Skip — no spec changes in this PR
+        if: steps.detect.outputs.has_changes == 'false'
+        run: |
+          echo "## L2 similarity check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No OpenAPI specs changed; skipping." >> $GITHUB_STEP_SUMMARY
+
+      - name: Check secrets availability
+        if: steps.detect.outputs.has_changes == 'true'
+        id: secrets_check
+        env:
+          AOAI_ENDPOINT: ${{ secrets.AOAI_ENDPOINT }}
+          AOAI_API_KEY: ${{ secrets.AOAI_API_KEY }}
+          SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
+          SEARCH_ADMIN_KEY: ${{ secrets.SEARCH_ADMIN_KEY }}
+        run: |
+          if [ -n "$AOAI_ENDPOINT" ] && [ -n "$AOAI_API_KEY" ] && [ -n "$SEARCH_ENDPOINT" ] && [ -n "$SEARCH_ADMIN_KEY" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "::warning::L2 similarity check is in dry-run mode. Configure repo secrets AOAI_ENDPOINT, AOAI_API_KEY, SEARCH_ENDPOINT, SEARCH_ADMIN_KEY to enable live scoring."
+          fi
+
+      - name: Dry-run — list new operations only
+        if: steps.detect.outputs.has_changes == 'true' && steps.secrets_check.outputs.ready == 'false'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          echo "## L2 similarity check (dry-run)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Repo secrets for AI Search / Azure OpenAI are not configured." >> $GITHUB_STEP_SUMMARY
+          echo "Listing newly added operationIds without scoring." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          python3 - <<'PY' >> $GITHUB_STEP_SUMMARY
+          import json, os, subprocess
+          base = os.environ["BASE_SHA"]
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", f"{base}...HEAD", "--", "apim/openapi/*.json"],
+              text=True,
+          ).strip().splitlines()
+          rows = []
+          for f in changed:
+              try:
+                  head = json.loads(open(f).read())
+              except Exception:
+                  continue
+              try:
+                  base_raw = subprocess.check_output(
+                      ["git", "show", f"{base}:{f}"], stderr=subprocess.DEVNULL
+                  )
+                  base_spec = json.loads(base_raw)
+              except Exception:
+                  base_spec = {"paths": {}}
+              def ops(s):
+                  return {
+                      op["operationId"]: (p, m)
+                      for p, ms in (s.get("paths") or {}).items()
+                      for m, op in (ms or {}).items()
+                      if isinstance(op, dict) and op.get("operationId")
+                  }
+              new = set(ops(head)) - set(ops(base_spec))
+              for op_id in new:
+                  rows.append((f, op_id))
+          if not rows:
+              print("No new operationIds.")
+          else:
+              print(f"**{len(rows)} new operation(s):**\n")
+              print("| spec | operationId |")
+              print("|---|---|")
+              for f, op in rows:
+                  print(f"| `{f}` | `{op}` |")
+          PY
+
+      - name: Install dup-resolver deps
+        if: steps.detect.outputs.has_changes == 'true' && steps.secrets_check.outputs.ready == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/dup-resolver/requirements.txt
+
+      - name: Score new operations
+        if: steps.detect.outputs.has_changes == 'true' && steps.secrets_check.outputs.ready == 'true'
+        id: score
+        env:
+          AOAI_ENDPOINT: ${{ secrets.AOAI_ENDPOINT }}
+          AOAI_API_KEY: ${{ secrets.AOAI_API_KEY }}
+          AOAI_EMBEDDING_DEPLOYMENT: ${{ secrets.AOAI_EMBEDDING_DEPLOYMENT }}
+          SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
+          SEARCH_INDEX: ${{ secrets.SEARCH_INDEX }}
+          SEARCH_ADMIN_KEY: ${{ secrets.SEARCH_ADMIN_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        working-directory: apps/dup-resolver
+        run: |
+          : "${AOAI_EMBEDDING_DEPLOYMENT:=text-embedding-3-large}"
+          : "${SEARCH_INDEX:=mcp-tool-fingerprints}"
+          export AOAI_EMBEDDING_DEPLOYMENT SEARCH_INDEX
+          # Resolve changed spec paths to be relative to the repo root,
+          # but pass them with the ../../ prefix the script expects when run
+          # from apps/dup-resolver/.
+          mapfile -t SPECS < <(git -C ../.. diff --name-only "$BASE_SHA"...HEAD -- 'apim/openapi/*.json')
+          ARGS=()
+          for s in "${SPECS[@]}"; do ARGS+=("../../$s"); done
+          python check_pr.py --base "$BASE_SHA" "${ARGS[@]}" >> "$GITHUB_STEP_SUMMARY"
