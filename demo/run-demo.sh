@@ -2,10 +2,11 @@
 # ============================================================================
 # MCP Tool Governance — Customer Demo (5 minutes, push-button)
 # ============================================================================
-# Three acts:
+# Four acts:
 #   Act 1: The problem      — lint a messy OpenAPI spec (22 errors)
 #   Act 2: L1 design-time   — lint the governed spec (0 errors)
 #   Act 3: L3 runtime       — three live curls show canonical-rewrite working
+#   Act 4: L2 semantic dup  — AI-Search-backed /clusters + /similarity
 #   Bonus: the eval numbers — +30pp lift on tool-selection accuracy
 #
 # Press ENTER between acts. Ctrl-C any time.
@@ -15,6 +16,10 @@
 #   - curl
 #   - /tmp/apim-master-key.txt contains the APIM master subscription key
 #   - (optional) NGROK URL/backend reachable; the L3 curls only need APIM
+#   - (optional, Act 4) dup-resolver running on http://127.0.0.1:8089
+#       cd apps/dup-resolver && source .venv/bin/activate \
+#         && uvicorn main:app --host 127.0.0.1 --port 8089
+#     If unreachable, Act 4 falls back to the captured docs/samples/*.json.
 #
 # Override the gateway with:  GATEWAY_URL=https://my-apim.../mcp ./run-demo.sh
 # ============================================================================
@@ -26,6 +31,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GATEWAY_URL="${GATEWAY_URL:-https://apimopenai99.azure-api.net/governed-mcp/mcp}"
 KEY_FILE="${KEY_FILE:-/tmp/apim-master-key.txt}"
 EVAL_SUMMARY="${EVAL_SUMMARY:-$REPO_ROOT/eval/results/summary.md}"
+RESOLVER_URL="${RESOLVER_URL:-http://127.0.0.1:8089}"
+CLUSTERS_SAMPLE="${CLUSTERS_SAMPLE:-$REPO_ROOT/docs/samples/clusters.json}"
+SIMILARITY_SAMPLE="${SIMILARITY_SAMPLE:-$REPO_ROOT/docs/samples/similarity-financeQuoteFetch.json}"
 
 # ---- pretty printing ------------------------------------------------------
 if [[ -t 1 ]]; then
@@ -137,6 +145,102 @@ act3_l3() {
   pause
 }
 
+act4_l2() {
+  banner "ACT 4 — Layer 2: AI-Search-backed semantic deduplication"
+  say "L1 catches naming drift. L3 absorbs aliases at runtime."
+  say "But what about NEW tools that LOOK fine to the linter but DUPLICATE existing ones?"
+  say "L2 runs every tool through Azure OpenAI embeddings + AI Search vector index,"
+  say "clusters near-duplicates, elects a canonical, and exposes a PR-time check."
+  echo
+
+  local resolver_up=0
+  if curl -sS -m 2 -o /dev/null -w "%{http_code}" "$RESOLVER_URL/healthz" 2>/dev/null | grep -q "^200$"; then
+    resolver_up=1
+  fi
+
+  if [[ $resolver_up -eq 0 ]]; then
+    say "${YELLOW}dup-resolver not running on $RESOLVER_URL — using captured samples.${RESET}"
+    say "${DIM}(Start it with: cd apps/dup-resolver && uvicorn main:app --port 8089)${RESET}"
+  fi
+
+  # ---- /clusters: surface duplicate clusters in messy-mcp ----
+  step "Show all tool clusters across both MCP servers"
+  cmd "curl $RESOLVER_URL/clusters"
+  pause
+
+  local clusters_json
+  if [[ $resolver_up -eq 1 ]]; then
+    clusters_json="$(curl -sS "$RESOLVER_URL/clusters")"
+  elif [[ -f "$CLUSTERS_SAMPLE" ]]; then
+    clusters_json="$(cat "$CLUSTERS_SAMPLE")"
+  else
+    say "${RED}no resolver and no $CLUSTERS_SAMPLE — skipping${RESET}"
+    return
+  fi
+
+  CLUSTERS_JSON="$clusters_json" python3 <<'PY'
+import json, os
+d = json.loads(os.environ["CLUSTERS_JSON"])
+print(f"  total_tools     = {d['total_tools']}")
+print(f"  total_clusters  = {d['total_clusters']}")
+print(f"  duplicate sets  = {d['duplicates']}")
+print()
+multi = [c for c in d['clusters'] if len(c['members']) > 1]
+if multi:
+    print("  Multi-member clusters (semantic duplicates):")
+    for c in multi:
+        print(f"    [{c['cluster_id']}]  canonical = {c['canonical']}")
+        for m in c['members']:
+            star = '*' if m['is_canonical'] else ' '
+            print(f"      {star} {m['server']}/{m['name']}")
+else:
+    print("  (no multi-member clusters)")
+PY
+  echo
+  say "${GREEN}Cosine ≥ 0.88 in 3072-dim embedding space groups these together.${RESET}"
+  say "Election picked the canonical deterministically — governed/well-named/described wins."
+  pause
+
+  # ---- /similarity: PR-time check ----
+  step "Simulate a developer adding a new tool: 'financeQuoteFetch'"
+  say "Imagine this op just landed in a PR against apim/openapi/finance-governed.json."
+  say "The same code runs in CI via .github/workflows/similarity-check.yml."
+  cmd "curl -X POST $RESOLVER_URL/similarity -d '{...financeQuoteFetch...}'"
+  pause
+
+  local sim_json
+  if [[ $resolver_up -eq 1 ]]; then
+    sim_json="$(curl -sS -X POST "$RESOLVER_URL/similarity" \
+      -H 'Content-Type: application/json' \
+      -d '{"name":"financeQuoteFetch","description":"Fetch a real-time stock quote for a given ticker symbol."}')"
+  elif [[ -f "$SIMILARITY_SAMPLE" ]]; then
+    sim_json="$(cat "$SIMILARITY_SAMPLE")"
+  else
+    say "${RED}no resolver and no $SIMILARITY_SAMPLE — skipping${RESET}"
+    return
+  fi
+
+  SIM_JSON="$sim_json" python3 <<'PY'
+import json, os
+d = json.loads(os.environ["SIM_JSON"])
+verdict = d['verdict']
+color = {'DUPLICATE': '\033[31m', 'WARN': '\033[33m', 'OK': '\033[32m'}.get(verdict, '')
+print(f"  verdict   : {color}{verdict}\033[0m")
+print(f"  threshold : {d['threshold']}")
+print(f"  reason    : {d['reason']}")
+print()
+print("  Top 3 nearest neighbors in the index:")
+for n in d['nearest'][:3]:
+    canon = ' [CANONICAL]' if n.get('is_canonical') else ''
+    print(f"    {n['score']:.3f}  {n['server']}/{n['name']}{canon}")
+PY
+  echo
+  say "${GREEN}WARN verdict — close to threshold, reviewer confirms.${RESET}"
+  say "If score ≥ 0.88, CI would FAIL the PR with a DUPLICATE verdict in the step summary."
+  say "Same vector index also powers the runtime /similarity API for federated catalogs."
+  pause
+}
+
 bonus_eval() {
   banner "BONUS — The eval numbers (the 'so what')"
   if [[ -f "$EVAL_SUMMARY" ]]; then
@@ -163,6 +267,7 @@ main() {
   act1_problem
   act2_l1
   act3_l3
+  act4_l2
   bonus_eval
   banner "Demo complete. Questions?"
 }

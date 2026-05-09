@@ -18,6 +18,12 @@ Override the gateway if demoing against a different APIM:
 GATEWAY_URL=https://my-apim.azure-api.net/governed-mcp/mcp ./demo/run-demo.sh
 ```
 
+Act 4 (L2 semantic dedup) needs the dup-resolver running. Optional — Act 4 falls back to captured `docs/samples/*.json` if the resolver isn't reachable:
+```bash
+cd apps/dup-resolver && source .venv/bin/activate \
+  && uvicorn main:app --host 127.0.0.1 --port 8089 &
+```
+
 ---
 
 ## Prereqs (one-time)
@@ -29,6 +35,7 @@ GATEWAY_URL=https://my-apim.azure-api.net/governed-mcp/mcp ./demo/run-demo.sh
 | `/tmp/apim-master-key.txt` | local file | APIM master subscription key (raw, no whitespace). Get from Portal → APIM → Subscriptions → built-in all-access |
 | Gateway reachable | network | `https://apimopenai99.azure-api.net/governed-mcp/mcp` by default |
 | ngrok backend | optional | only needed if you want Act 3 to actually return a 200 body. Headers (which is what we read) come back regardless |
+| dup-resolver running | optional | Act 4 needs `http://127.0.0.1:8089` reachable. If it isn't, Act 4 falls back to captured samples in `docs/samples/`. |
 
 ---
 
@@ -69,6 +76,21 @@ GATEWAY_URL=https://my-apim.azure-api.net/governed-mcp/mcp ./demo/run-demo.sh
 - *"**Fail open** — if Cosmos is unreachable, the request goes through unrewritten. We never break the call path for a metadata lookup."*
 - *"All this is **one APIM policy** — ~80 lines of XML. No new services, no sidecars, no application-code changes."*
 
+### Act 4 — Layer 2 (60 sec — the data-driven dedup)
+**Setup beat:**
+- *"L1 catches naming drift. L3 absorbs aliases at runtime. L2 is the missing piece — what about a NEW tool that PASSES the linter but is semantically a duplicate of one we already have?"*
+
+**`/clusters` beat:**
+- *"Every tool gets embedded with `text-embedding-3-large` — 3072 dimensions — and indexed in Azure AI Search. We cluster at cosine ≥ 0.88."*
+- Point at the two multi-member clusters: *"`createCustomer` and `customerCreate` — same intent, two wire names. The cluster found them. We elect a canonical deterministically."*
+
+**`/similarity` beat (the headline):**
+- *"Now imagine a PR adds `financeQuoteFetch`. Different verb, plausible-looking name, no lint error. L2 says: WARN — 0.83 against `financeQuoteGet` — reviewer confirms."*
+- *"At 0.88 it'd be DUPLICATE and we fail the PR. Same code lives in `.github/workflows/similarity-check.yml`."*
+
+**One honest caveat (only if asked):**
+- *"The threshold is conservative on purpose. The cross-server messy ↔ governed pairs hit ~0.75 because messy descriptions are deliberately thin. WARN catches those at PR time, which is the realistic case."*
+
 ### Bonus — Eval numbers (30 sec — the "so what")
 - *"Same model. Same 20 prompts. The only thing we changed was the tool surface."*
 - Point at the +30pp number: *"30 percentage points of agent accuracy. That's the dollar value of governance."*
@@ -88,6 +110,7 @@ GATEWAY_URL=https://my-apim.azure-api.net/governed-mcp/mcp ./demo/run-demo.sh
 | Act 3 returns no headers | Gateway is down OR policy was detached. Check Portal → MCP Servers → governed-mcp → Policies. Re-paste from `apim/policies/canonical-rewrite-smoke.policy.xml`. |
 | Act 3 returns `502` / `504` | ngrok backend is down. Headers still appear though, which is what the demo reads. Demo continues to work. |
 | Act 3 returns `404 Resource Not Found` for the alias | The alias isn't in Cosmos. Re-seed: `python3 tools-cli/seed_canonical_map.py` |
+| Act 4 says "resolver not running" | Either start it (`cd apps/dup-resolver && uvicorn main:app --port 8089`) or accept the captured-sample fallback — the demo continues either way. |
 | Lint says "no OpenAPI specs found" | You're not in the repo root. `cd` to repo root first. |
 | Pre-recorded fallback | If Azure is unreachable entirely, walk through [`docs/samples/demo-transcript.md`](../docs/samples/demo-transcript.md) screen-share. Same script, captured output. |
 
@@ -110,6 +133,7 @@ GATEWAY_URL=https://my-apim.azure-api.net/governed-mcp/mcp ./demo/run-demo.sh
 | Act 1 (problem) | 0:45 | 1:00 |
 | Act 2 (L1) | 0:30 | 1:30 |
 | Act 3 (L3 — three curls) | 1:30 | 3:00 |
-| Bonus (eval) | 0:30 | 3:30 |
-| Closing | 0:15 | 3:45 |
-| Q&A buffer | 1:15 | 5:00 |
+| Act 4 (L2 — clusters + similarity) | 1:00 | 4:00 |
+| Bonus (eval) | 0:30 | 4:30 |
+| Closing | 0:15 | 4:45 |
+| Q&A buffer | 1:15 | 6:00 |
