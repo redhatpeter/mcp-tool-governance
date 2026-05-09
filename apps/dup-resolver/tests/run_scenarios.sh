@@ -211,10 +211,30 @@ git -C ../.. checkout -- apim/openapi/finance-governed.json 2>/dev/null
 # Scenario 7 (#3 in plan): Cross-server collision
 # Add the duplicate op to messy-mcp.json (different file/server) — does the
 # index still flag it against governed-mcp/financeQuoteGet?
+# This case scores ~0.900 (paraphrase, not verbatim), so verdict depends on
+# threshold: DUPLICATE at 0.88, WARN at 0.92. Either is acceptable —
+# the gate must surface SOMETHING, not silently pass.
 # ---------------------------------------------------------------------------
 emit_spec "$TMP/cross.json" \
   "/messy/quote" "get" "messyQuoteFetch" "messyQuoteFetch" "$DUP_DESC"
-run_scenario "cross-server-collision" "$TMP/cross.json" 1 "DUPLICATE.*governed"
+# Accept WARN (exit 0) or DUPLICATE (exit 1); we just verify the row mentions governed.
+echo
+echo "============================================================"
+echo "SCENARIO: cross-server-collision"
+echo "============================================================"
+set +e
+cout=$(python check_pr.py --all "$TMP/cross.json" 2>&1)
+cexit=$?
+set -e
+echo "$cout"
+echo "--- exit=$cexit ---"
+if echo "$cout" | grep -qE "(DUPLICATE|WARN).*governed"; then
+  echo "PASS: cross-server-collision (verdict=$(echo "$cout" | grep -oE "(DUPLICATE|WARN|OK)" | head -1), exit=$cexit)"
+  PASS=$((PASS + 1))
+else
+  echo "FAIL: cross-server-collision — expected DUPLICATE or WARN against governed-mcp"
+  FAIL=$((FAIL + 1))
+fi
 
 # ---------------------------------------------------------------------------
 # Scenario 8 (#9 in plan): Threshold sweep — note check_pr.py reads
