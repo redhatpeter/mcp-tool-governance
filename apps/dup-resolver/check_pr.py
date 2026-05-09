@@ -68,9 +68,23 @@ def load_spec_at_ref(ref: str, path: str) -> dict[str, Any] | None:
         return None
 
 
+def _load_head_spec(file_path: str) -> dict[str, Any]:
+    """Read a working-tree OpenAPI file with friendly errors (no traceback)."""
+    p = Path(file_path)
+    if not p.exists():
+        print(f"ERROR: spec file not found: {file_path}", file=sys.stderr)
+        sys.exit(2)
+    try:
+        return json.loads(p.read_text())
+    except json.JSONDecodeError as e:
+        print(f"ERROR: {file_path} is not valid JSON: {e.msg} "
+              f"(line {e.lineno}, col {e.colno})", file=sys.stderr)
+        sys.exit(2)
+
+
 def diff_new_operations(base_ref: str, file_path: str) -> list[dict[str, Any]]:
     """Return operations present in the working tree but not in ``base_ref``."""
-    head_spec = json.loads(Path(file_path).read_text())
+    head_spec = _load_head_spec(file_path)
     head_ops = extract_operations(head_spec)
     base_spec = load_spec_at_ref(base_ref, file_path)
     base_ops = extract_operations(base_spec) if base_spec else {}
@@ -191,7 +205,7 @@ def main() -> int:
     candidates: list[dict[str, Any]] = []
     for f in args.files:
         if args.all:
-            spec = json.loads(Path(f).read_text())
+            spec = _load_head_spec(f)
             ops = extract_operations(spec)
             for op_id, info in ops.items():
                 candidates.append({"operationId": op_id, "spec_file": f, **info})
