@@ -136,7 +136,9 @@ jobs:
           SEARCH_ADMIN_KEY: ${{ secrets.SEARCH_ADMIN_KEY }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         working-directory: apps/dup-resolver
+        shell: bash
         run: |
+          set -o pipefail   # propagate check_pr.py's non-zero exit through the tee pipe
           : "${AOAI_EMBEDDING_DEPLOYMENT:=text-embedding-3-large}"
           : "${SEARCH_INDEX:=mcp-tool-fingerprints}"
           export AOAI_EMBEDDING_DEPLOYMENT SEARCH_INDEX
