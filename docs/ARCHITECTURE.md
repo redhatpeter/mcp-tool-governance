@@ -35,6 +35,7 @@
 - [3. Scope (In / Out)](#3-scope-in--out)
   - [3.1 Feasible PoC Scope — the smart path to "workable"](#31-feasible-poc-scope--the-smart-path-to-workable)
   - [3.2 Authored name vs. wire name (APIM-MCP naming model)](#32-authored-name-vs-wire-name-apim-mcp-naming-model)
+  - [3.3 Why both L1 lint and L3 runtime rewrite — they solve different problems](#33-why-both-l1-lint-and-l3-runtime-rewrite--they-solve-different-problems)
 - [4. High-Level Architecture](#4-high-level-architecture)
   - [4.1 Topology options & upgrade path](#41-topology-options--upgrade-path)
 - [5. Three-Layer Governance Model](#5-three-layer-governance-model)
@@ -189,6 +190,32 @@ The normalization (verified against `apimopenai99/governed-mcp` 2026-05-08, fing
 | **Canonical id** | Cosmos `mcp-canonical-map` doc | `financeQuoteGet` (same as wire, by convention) | L3 rewrite target, eval harness, L2 election record |
 
 The PoC convention is: **canonical_id ≡ wire name**. Aliases are stored as additional Cosmos docs whose `id` equals the alias and whose `primary.name` points back to the wire name. See [`tools-cli/seed_canonical_map.py`](../tools-cli/seed_canonical_map.py) for the seeding pattern and [`apim/policies/canonical-rewrite-smoke.policy.xml`](../apim/policies/canonical-rewrite-smoke.policy.xml) for the consuming policy.
+
+### 3.3 Why both L1 lint and L3 runtime rewrite — they solve different problems
+
+A reasonable question after seeing the canonical-rewrite policy in action: *"If APIM-MCP exposes the wire name we control, and the LLM picks straight from `tools/list`, why is the L3 rewrite layer needed at all? Wouldn't L1 alone be sufficient?"*
+
+In a **single-tenant, single-team, never-federated** PoC: yes, L1 alone is enough. APIM exposes only compliant names, the LLM only ever sees compliant names, the rewrite policy fires `none` 100% of the time and is dead weight.
+
+In the **real customer scenario** (multi-team APIM, planned federation to Bedrock and Vertex per §1, normal product evolution over years), the rewrite layer earns its keep four ways. L1 cannot solve any of them:
+
+| Scenario | What happens | Why L1 can't fix it | What L3 does |
+|---|---|---|---|
+| **Multi-server federation** | CRM team's `crm-mcp` exposes `getCustomer`; Finance team's `governed-mcp` exposes `financeCustomerGet`. Agent connects to both, picks the shorter name. | Each team owns their own repo. L1 in finance/repo cannot dictate names in crm/repo. | Reconciles cross-server aliases at the gateway. |
+| **External / legacy callers** | A partner's agent (or a Bedrock-hosted agent built before your standard existed) sends `get_quote`. | You don't control their code; you can't make them redeploy. | Absorbs the legacy name without breaking the partner. |
+| **Renaming a canonical** | `financeQuoteGet` should become `financeMarketQuoteGet` because you're adding `financeInternalQuoteGet`. | L1 enforces today's standard; it cannot retroactively migrate every deployed agent. | Add `financeQuoteGet` as an alias pointing at `financeMarketQuoteGet`. Old agents keep working; new agents see the new name. **HTTP-301-redirect for tools.** |
+| **LLM hallucination on known patterns** | Agent emits `getStockPrice` (vocabulary from a different finance ontology) for what should be `financeQuoteGet`. | L1 only checks specs at PR time; it never sees runtime tool calls. | Map known-frequent hallucinations to canonicals after observing them in eval/prod logs. |
+
+**Two distinct jobs, two distinct enforcement points:**
+
+| Job | Enforcement point | Implementation |
+|---|---|---|
+| **Authoring discipline** — never let bad names *enter* the catalog | At PR time | L1 lint (`tools-cli/lint.py`, GitHub Actions) |
+| **Federation and evolution** — reconcile names *across catalogs and across time* | At call time | L3 rewrite policy (Cosmos + APIM `send-request`) |
+
+**L1 keeps your catalog clean. L3 lets you change the catalog without breaking the world, and lets you accept calls from systems you don't control.** Either layer alone is fragile at scale; both together are robust.
+
+A third option exists in the MCP spec — embed aliases as prose hints inside tool descriptions ("also known as `getCustomer`, `customer.lookup`...") and trust the LLM to map them. We rejected this because it depends on the LLM reading and respecting prose at inference time (non-deterministic) and provides no audit trail. The Cosmos+policy path is enforceable, replayable, and produces an `x-mcp-canonical-rewrite` response header that App Insights can index. **For governance-critical paths (financial transactions, PII access), enforceable beats hopeful.**
 
 ---
 
