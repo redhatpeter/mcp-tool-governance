@@ -166,6 +166,9 @@ def lint_spec(spec_path: Path) -> list[Finding]:
         wire = camel_case_wire_name(op.summary)
 
         # E001: missing summary
+        # Example trigger:  { "get": { "operationId": "getCustomer" } }   <- no summary
+        # Why it matters:   APIM-MCP derives the wire tool name from `summary`;
+        #                   without one, the operation is dropped from tools/list.
         if not op.summary.strip():
             findings.append(Finding("E", "E001", op.spec, op.op_path, op.summary, wire,
                                     "operation is missing `summary` — APIM-MCP "
@@ -173,12 +176,23 @@ def lint_spec(spec_path: Path) -> list[Finding]:
             continue   # later checks need a wire name
 
         # E002: bad wire name shape
+        # Example trigger:  summary="X"             -> wire="x"          (too short)
+        #                   summary="2-step verify" -> wire="2StepVerify" (starts with digit)
+        #                   summary="A".repeat(70)  -> wire too long (>64)
+        # Required pattern: ^[a-z][a-zA-Z0-9]{2,63}$
         if not WIRE_NAME_RE.match(wire):
             findings.append(Finding("E", "E002", op.spec, op.op_path, op.summary, wire,
                                     f"normalized wire name {wire!r} fails "
                                     "^[a-z][a-zA-Z0-9]{2,63}$"))
 
-        # E003: wire-name collision
+        # E003: wire-name collision  (the killer rule — failure mode #5)
+        # Example trigger:  op A summary="createCustomer"
+        #                   op B summary="Create_Customer"
+        #                   Both normalize to wire="createCustomer"; APIM-MCP
+        #                   silently keeps one and drops the other.
+        # Real example from finance-messy.json:
+        #                   POST /customers/new      summary="createCustomer"
+        #                   POST /customer/create    summary="Create_Customer"
         if wire in seen_wire:
             findings.append(Finding("E", "E003", op.spec, op.op_path, op.summary, wire,
                                     f"collision: {seen_wire[wire]} already produces "
@@ -187,13 +201,23 @@ def lint_spec(spec_path: Path) -> list[Finding]:
             seen_wire[wire] = op.op_path
 
         # E004: domain prefix
+        # Example trigger:  summary="customerGet"        -> wire="customerGet"   OK
+        #                   summary="quote_get"          -> wire="quoteGet"      FAIL
+        #                       (no approved domain prefix; allowed: finance,
+        #                        customer, hr, sales, operations)
+        # Why it matters:   Cross-domain federation needs unique namespacing or
+        #                   tools collide once you onboard >1 team.
         if not any(wire.startswith(d) for d in DOMAINS):
             findings.append(Finding("E", "E004", op.spec, op.op_path, op.summary, wire,
                                     f"wire name does not start with an approved domain "
                                     f"({', '.join(DOMAINS)})"))
 
-        # E005: action verb
-        # Last token = trailing run of capitalized letters interpreted as a token.
+        # E005: action verb whitelist
+        # Example trigger:  summary="financeCustomerYeet" -> last token "Yeet" -> FAIL
+        #                   summary="finance_customer_grab" -> last token "grab" -> FAIL
+        #                   summary="financeCustomerGet"  -> last token "Get"  -> OK
+        # Allowed verbs: get, list, search, create, update, delete, summarize,
+        #                validate, approve, reject, void
         tokens = _tokenize_summary(op.summary)
         last = tokens[-1].lower() if tokens else ""
         if last and last not in VERBS:
@@ -201,7 +225,13 @@ def lint_spec(spec_path: Path) -> list[Finding]:
                                     f"action token {last!r} is not in the approved "
                                     f"verb list ({', '.join(VERBS)})"))
 
-        # E006: banned markers
+        # E006: banned legacy/version markers in summary
+        # Example trigger:  summary="financeCustomerGetV2"   -> contains "v2"
+        #                   summary="finance_customer_legacy" -> contains "legacy"
+        #                   summary="finance_invoice_create_final" -> contains "final"
+        # Why it matters:   Versioning belongs in OpenAPI `info.version`, not the
+        #                   tool name. Forking names creates near-duplicates and
+        #                   confuses LLMs (failure mode #2).
         if BANNED_MARKERS.search(op.summary):
             findings.append(Finding("E", "E006", op.spec, op.op_path, op.summary, wire,
                                     "summary contains a banned version/legacy marker "
@@ -209,13 +239,26 @@ def lint_spec(spec_path: Path) -> list[Finding]:
                                     "in the OpenAPI `info.version` field instead"))
 
         # W101: thin description
+        # Example trigger:  description=""                    -> 0 chars   FAIL
+        #                   description="Get a customer."     -> 17 chars  FAIL (<40)
+        # OK example:       "Retrieve a single customer record by exact customer_id..."
+        # Why it matters:   Eval shows description quality moves tool-pick rate
+        #                   by ~30pp. This is the highest-leverage W rule.
         desc = op.description.strip()
         if len(desc) < MIN_DESC:
             findings.append(Finding("W", "W101", op.spec, op.op_path, op.summary, wire,
                                     f"description is {len(desc)} chars (min {MIN_DESC}); "
                                     "rich descriptions improve tool-pick correctness"))
 
-        # W102: missing USE WHEN / DO NOT USE
+        # W102: missing USE WHEN / DO NOT USE guidance
+        # Example trigger:  description="Returns the customer object including
+        #                   contact details and billing address fields."
+        #                   (long enough, but no disambiguation guidance)
+        # OK example:       "...USE WHEN you already know the customer_id.
+        #                   DO NOT USE for lookup by name/email — call
+        #                   financeCustomerSearch instead."
+        # Why it matters:   Disambiguation phrases are how you steer the LLM
+        #                   away from near-duplicate tools (failure mode #2/#3).
         elif "use when" not in desc.lower() and "do not use" not in desc.lower():
             findings.append(Finding("W", "W102", op.spec, op.op_path, op.summary, wire,
                                     "description lacks 'USE WHEN' / 'DO NOT USE' "
