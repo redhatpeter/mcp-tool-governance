@@ -65,6 +65,10 @@ MIN_DESC = int(os.environ.get("LINT_MIN_DESC", "40"))
 BANNED_MARKERS = re.compile(r"(?:^|[^a-z0-9])(v\d+|final|legacy|new|old)(?:[^a-z0-9]|$)", re.I)
 WIRE_NAME_RE = re.compile(r"^[a-z][a-zA-Z0-9]{2,63}$")
 SPLIT_RE = re.compile(r"[^A-Za-z0-9]+")
+# camelCase / PascalCase boundary: insert a delimiter before any uppercase
+# letter that follows a lowercase letter or digit (so 'financeQuoteGet' tokenizes
+# to ['finance','Quote','Get'] just like 'finance_quote_get' does).
+CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 
 @dataclass
@@ -97,6 +101,17 @@ class Operation:
     op_path: str         # "GET /governed/customers"
     summary: str
     description: str
+
+
+def _tokenize_summary(summary: str) -> list[str]:
+    """Tokenize a summary into its semantic parts, accepting both authoring
+    styles: snake_case (`finance_quote_get`) and camelCase (`financeQuoteGet`).
+    Splits on non-identifier chars first, then on camelCase boundaries."""
+    raw = [t for t in SPLIT_RE.split(summary) if t]
+    tokens: list[str] = []
+    for piece in raw:
+        tokens.extend(t for t in CAMEL_BOUNDARY_RE.split(piece) if t)
+    return tokens
 
 
 def camel_case_wire_name(summary: str) -> str:
@@ -179,7 +194,7 @@ def lint_spec(spec_path: Path) -> list[Finding]:
 
         # E005: action verb
         # Last token = trailing run of capitalized letters interpreted as a token.
-        tokens = [t for t in SPLIT_RE.split(op.summary) if t]
+        tokens = _tokenize_summary(op.summary)
         last = tokens[-1].lower() if tokens else ""
         if last and last not in VERBS:
             findings.append(Finding("E", "E005", op.spec, op.op_path, op.summary, wire,

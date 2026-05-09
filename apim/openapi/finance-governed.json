@@ -11,8 +11,8 @@
                 "tags": [
                     "governed"
                 ],
-                "summary": "finance_customer_get",
-                "operationId": "finance_customer_get",
+                "summary": "financeCustomerGet",
+                "operationId": "financeCustomerGet",
                 "parameters": [
                     {
                         "name": "customer_id",
@@ -48,7 +48,7 @@
                         }
                     }
                 },
-                "description": "Retrieve a single customer record by exact customer_id. USE WHEN you already know the customer_id. DO NOT USE for lookup by name/email \u2014 call finance_customer_search instead. Returns the full Customer object including contact fields."
+                "description": "Retrieve a single customer record by exact customer_id. USE WHEN you already know the customer_id. DO NOT USE for lookup by name/email \u2014 call financeCustomerSearch instead. Returns the full Customer object including contact fields."
             }
         },
         "/governed/customers": {
@@ -56,8 +56,8 @@
                 "tags": [
                     "governed"
                 ],
-                "summary": "finance_customer_create",
-                "operationId": "finance_customer_create",
+                "summary": "financeCustomerCreate",
+                "operationId": "financeCustomerCreate",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -90,14 +90,14 @@
                         }
                     }
                 },
-                "description": "Create a new customer record. USE WHEN you have verified the customer does not already exist. DO NOT USE without first calling finance_customer_search to avoid duplicates. Required: name, email. Returns the new customer_id."
+                "description": "Create a new customer record. USE WHEN you have verified the customer does not already exist. DO NOT USE without first calling financeCustomerSearch to avoid duplicates. Required: name, email. Returns the new customer_id."
             },
             "get": {
                 "tags": [
                     "governed"
                 ],
-                "summary": "finance_customer_search",
-                "operationId": "finance_customer_search",
+                "summary": "financeCustomerSearch",
+                "operationId": "financeCustomerSearch",
                 "parameters": [
                     {
                         "name": "q",
@@ -138,7 +138,7 @@
                         }
                     }
                 },
-                "description": "Search customers by partial match on name or email. USE WHEN you need to find a customer by descriptive text, or BEFORE creating a new customer to check for duplicates. DO NOT USE for exact id lookup \u2014 use finance_customer_get instead. Returns up to 25 matches ranked by relevance."
+                "description": "Search customers by partial match on name or email. USE WHEN you need to find a customer by descriptive text, or BEFORE creating a new customer to check for duplicates. DO NOT USE for exact id lookup \u2014 use financeCustomerGet instead. Returns up to 25 matches ranked by relevance."
             }
         },
         "/governed/invoices/{invoice_id}": {
@@ -146,8 +146,8 @@
                 "tags": [
                     "governed"
                 ],
-                "summary": "finance_invoice_get",
-                "operationId": "finance_invoice_get",
+                "summary": "financeInvoiceGet",
+                "operationId": "financeInvoiceGet",
                 "parameters": [
                     {
                         "name": "invoice_id",
@@ -183,7 +183,7 @@
                         }
                     }
                 },
-                "description": "Retrieve a single invoice by exact invoice_id. USE WHEN you have a specific invoice_id and need its full detail (line items, status, amount, customer reference). DO NOT USE for browsing or filtering \u2014 use finance_invoice_list."
+                "description": "Retrieve a single invoice by exact invoice_id. USE WHEN you have a specific invoice_id and need its full detail (line items, status, amount, customer reference). DO NOT USE for browsing or filtering \u2014 use financeInvoiceList."
             }
         },
         "/governed/invoices": {
@@ -191,8 +191,8 @@
                 "tags": [
                     "governed"
                 ],
-                "summary": "finance_invoice_create",
-                "operationId": "finance_invoice_create",
+                "summary": "financeInvoiceCreate",
+                "operationId": "financeInvoiceCreate",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -231,8 +231,8 @@
                 "tags": [
                     "governed"
                 ],
-                "summary": "finance_invoice_list",
-                "operationId": "finance_invoice_list",
+                "summary": "financeInvoiceList",
+                "operationId": "financeInvoiceList",
                 "parameters": [
                     {
                         "name": "customer_id",
@@ -297,7 +297,7 @@
                         }
                     }
                 },
-                "description": "List invoices with optional filters: customer_id (scope to one customer) and/or status (one of: draft, sent, paid, overdue). USE WHEN browsing or reporting. DO NOT USE when you already have a specific invoice_id \u2014 use finance_invoice_get. Returns a paginated list ordered by created_at desc."
+                "description": "List invoices with optional filters: customer_id (scope to one customer) and/or status (one of: draft, sent, paid, overdue). USE WHEN browsing or reporting. DO NOT USE when you already have a specific invoice_id \u2014 use financeInvoiceGet. Returns a paginated list ordered by created_at desc."
             }
         },
         "/governed/payments/approve": {
@@ -305,8 +305,8 @@
                 "tags": [
                     "governed"
                 ],
-                "summary": "finance_payment_approve",
-                "operationId": "finance_payment_approve",
+                "summary": "financePaymentApprove",
+                "operationId": "financePaymentApprove",
                 "parameters": [
                     {
                         "name": "invoice_id",
@@ -361,8 +361,8 @@
                 "tags": [
                     "governed"
                 ],
-                "summary": "finance_quote_get",
-                "operationId": "finance_quote_get",
+                "summary": "financeQuoteGet",
+                "operationId": "financeQuoteGet",
                 "parameters": [
                     {
                         "name": "symbol",
