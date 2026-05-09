@@ -146,4 +146,6 @@ jobs:
           mapfile -t SPECS < <(git -C ../.. diff --name-only "$BASE_SHA"...HEAD -- 'apim/openapi/*.json')
           ARGS=()
           for s in "${SPECS[@]}"; do ARGS+=("../../$s"); done
-          python check_pr.py --base "$BASE_SHA" "${ARGS[@]}" >> "$GITHUB_STEP_SUMMARY"
+          # Tee the markdown verdict to BOTH the job log and the PR step summary
+          # so reviewers can see it without clicking into the Summary tab.
+          python check_pr.py --base "$BASE_SHA" "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
