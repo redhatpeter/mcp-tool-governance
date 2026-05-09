@@ -405,7 +405,7 @@
       "get": {
         "operationId": "financeQuoteFetch",
         "summary": "financeQuoteFetch",
-        "description": "Fetch a real-time stock market quote (price, volume, change) for a given ticker symbol. USE WHEN you need current pricing for a single instrument. DO NOT USE for batch lookups.",
+        "description": "Get the current market quote (bid/ask/last) for a ticker symbol. USE WHEN you need real-time pricing for a decision. Symbol format: uppercase ticker, e.g. MSFT. Quotes are advisory only and are NOT execution prices and may be stale up to 250ms.",
         "parameters": [
           {
             "name": "symbol",
