@@ -144,6 +144,48 @@ The output below is byte-for-byte what the script produces on a healthy run
   Lookup is in Cosmos, cached 60s in APIM, authenticated via managed identity.
 
 =================================================================
+ ACT 4 — Layer 2: AI-Search-backed semantic deduplication 
+=================================================================
+  L1 catches naming drift. L3 absorbs aliases at runtime.
+  But what about NEW tools that LOOK fine to the linter but DUPLICATE existing ones?
+  L2 runs every tool through Azure OpenAI embeddings + AI Search vector index,
+  clusters near-duplicates, elects a canonical, and exposes a PR-time check.
+
+▸ Show all tool clusters across both MCP servers
+  $ curl http://127.0.0.1:8089/clusters
+  total_tools     = 20
+  total_clusters  = 18
+  duplicate sets  = 2
+
+  Multi-member clusters (semantic duplicates):
+    [clu_messy-mcp__createCustomer]  canonical = customerCreate
+        messy-mcp/createCustomer
+      * messy-mcp/customerCreate
+    [clu_messy-mcp__invoiceCreateV1]  canonical = invoiceCreateV1
+        messy-mcp/invoiceCreateV2
+      * messy-mcp/invoiceCreateV1
+
+  Cosine ≥ 0.88 in 3072-dim embedding space groups these together.
+  Election picked the canonical deterministically — governed/well-named/described wins.
+
+▸ Simulate a developer adding a new tool: 'financeQuoteFetch'
+  Imagine this op just landed in a PR against apim/openapi/finance-governed.json.
+  The same code runs in CI via .github/workflows/similarity-check.yml.
+  $ curl -X POST http://127.0.0.1:8089/similarity -d '{...financeQuoteFetch...}'
+  verdict   : WARN
+  threshold : 0.88
+  reason    : top match 'financeQuoteGet' (score 0.832) is close to threshold 0.88; reviewer should confirm not a duplicate
+
+  Top 3 nearest neighbors in the index:
+    0.832  governed-mcp/financeQuoteGet [CANONICAL]
+    0.675  governed-mcp/financeInvoiceGet [CANONICAL]
+    0.665  governed-mcp/financeCustomerGet [CANONICAL]
+
+  WARN verdict — close to threshold, reviewer confirms.
+  If score ≥ 0.88, CI would FAIL the PR with a DUPLICATE verdict in the step summary.
+  Same vector index also powers the runtime /similarity API for federated catalogs.
+
+=================================================================
  BONUS — The eval numbers (the 'so what') 
 =================================================================
   Same model (gpt-4o-mini), same 20 prompts, only the tool surface differs:
