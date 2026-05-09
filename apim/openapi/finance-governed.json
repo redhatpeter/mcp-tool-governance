@@ -1,766 +1,788 @@
 {
-    "openapi": "3.1.0",
-    "info": {
-        "title": "Finance API (governed)",
-        "description": "Reference 'governed' finance API for the MCP Tool Governance PoC. Tools follow the {domain}_{entity}_{verb} naming standard, have single-purpose operations, and rich when-to-use / when-NOT-to-use descriptions designed for reliable LLM tool selection.",
-        "version": "0.1.0"
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Finance API (governed)",
+    "description": "Reference 'governed' finance API for the MCP Tool Governance PoC. Tools follow the {domain}_{entity}_{verb} naming standard, have single-purpose operations, and rich when-to-use / when-NOT-to-use descriptions designed for reliable LLM tool selection.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/governed/customers/{customer_id}": {
+      "get": {
+        "tags": [
+          "governed"
+        ],
+        "summary": "financeCustomerGet",
+        "operationId": "financeCustomerGet",
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Customer Id",
+              "description": "Exact customer identifier, e.g. 'c-001'."
+            },
+            "description": "Exact customer identifier, e.g. 'c-001'."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retrieve a single customer record by exact customer_id. USE WHEN you already know the customer_id. DO NOT USE for lookup by name/email \u2014 call financeCustomerSearch instead. Returns the full Customer object including contact fields."
+      }
     },
-    "paths": {
-        "/governed/customers/{customer_id}": {
-            "get": {
-                "tags": [
-                    "governed"
-                ],
-                "summary": "financeCustomerGet",
-                "operationId": "financeCustomerGet",
-                "parameters": [
-                    {
-                        "name": "customer_id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "Customer Id",
-                            "description": "Exact customer identifier, e.g. 'c-001'."
-                        },
-                        "description": "Exact customer identifier, e.g. 'c-001'."
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Customer"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                },
-                "description": "Retrieve a single customer record by exact customer_id. USE WHEN you already know the customer_id. DO NOT USE for lookup by name/email \u2014 call financeCustomerSearch instead. Returns the full Customer object including contact fields."
+    "/governed/customers": {
+      "post": {
+        "tags": [
+          "governed"
+        ],
+        "summary": "financeCustomerCreate",
+        "operationId": "financeCustomerCreate",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCustomerRequest"
+              }
             }
+          }
         },
-        "/governed/customers": {
-            "post": {
-                "tags": [
-                    "governed"
-                ],
-                "summary": "financeCustomerCreate",
-                "operationId": "financeCustomerCreate",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/CreateCustomerRequest"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Customer"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                },
-                "description": "Create a new customer record. USE WHEN you have verified the customer does not already exist. DO NOT USE without first calling financeCustomerSearch to avoid duplicates. Required: name, email. Returns the new customer_id."
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create a new customer record. USE WHEN you have verified the customer does not already exist. DO NOT USE without first calling financeCustomerSearch to avoid duplicates. Required: name, email. Returns the new customer_id."
+      },
+      "get": {
+        "tags": [
+          "governed"
+        ],
+        "summary": "financeCustomerSearch",
+        "operationId": "financeCustomerSearch",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Search query \u2014 partial match on customer name or email. Case-insensitive.",
+              "default": "",
+              "title": "Q"
             },
-            "get": {
-                "tags": [
-                    "governed"
-                ],
-                "summary": "financeCustomerSearch",
-                "operationId": "financeCustomerSearch",
-                "parameters": [
-                    {
-                        "name": "q",
-                        "in": "query",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "description": "Search query \u2014 partial match on customer name or email. Case-insensitive.",
-                            "default": "",
-                            "title": "Q"
-                        },
-                        "description": "Search query \u2014 partial match on customer name or email. Case-insensitive."
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/Customer"
-                                    },
-                                    "title": "Response Finance Customer Search"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                },
-                "description": "Search customers by partial match on name or email. USE WHEN you need to find a customer by descriptive text, or BEFORE creating a new customer to check for duplicates. DO NOT USE for exact id lookup \u2014 use financeCustomerGet instead. Returns up to 25 matches ranked by relevance."
+            "description": "Search query \u2014 partial match on customer name or email. Case-insensitive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Customer"
+                  },
+                  "title": "Response Finance Customer Search"
+                }
+              }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
         },
-        "/governed/invoices/{invoice_id}": {
-            "get": {
-                "tags": [
-                    "governed"
-                ],
-                "summary": "financeInvoiceGet",
-                "operationId": "financeInvoiceGet",
-                "parameters": [
-                    {
-                        "name": "invoice_id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "Invoice Id",
-                            "description": "Exact invoice identifier, e.g. 'inv-1001'."
-                        },
-                        "description": "Exact invoice identifier, e.g. 'inv-1001'."
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Invoice"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                },
-                "description": "Retrieve a single invoice by exact invoice_id. USE WHEN you have a specific invoice_id and need its full detail (line items, status, amount, customer reference). DO NOT USE for browsing or filtering \u2014 use financeInvoiceList."
-            }
-        },
-        "/governed/invoices": {
-            "post": {
-                "tags": [
-                    "governed"
-                ],
-                "summary": "financeInvoiceCreate",
-                "operationId": "financeInvoiceCreate",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/CreateInvoiceRequest"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Invoice"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                },
-                "description": "Create a new invoice for an existing customer. USE WHEN the customer is already created/verified and you need to bill them. Required: customer_id, amount. Optional: currency (defaults to USD). DOES NOT send the invoice \u2014 only persists it in 'draft' status."
-            },
-            "get": {
-                "tags": [
-                    "governed"
-                ],
-                "summary": "financeInvoiceList",
-                "operationId": "financeInvoiceList",
-                "parameters": [
-                    {
-                        "name": "customer_id",
-                        "in": "query",
-                        "required": false,
-                        "schema": {
-                            "anyOf": [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "null"
-                                }
-                            ],
-                            "title": "Customer Id",
-                            "description": "Optional. Restrict results to invoices for a single customer (e.g. 'c-001')."
-                        },
-                        "description": "Optional. Restrict results to invoices for a single customer (e.g. 'c-001')."
-                    },
-                    {
-                        "name": "status",
-                        "in": "query",
-                        "required": false,
-                        "schema": {
-                            "anyOf": [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "null"
-                                }
-                            ],
-                            "title": "Status",
-                            "description": "Optional. Filter by invoice status. One of: 'draft', 'sent', 'paid', 'overdue'."
-                        },
-                        "description": "Optional. Filter by invoice status. One of: 'draft', 'sent', 'paid', 'overdue'."
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/Invoice"
-                                    },
-                                    "title": "Response Finance Invoice List"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                },
-                "description": "List invoices with optional filters: customer_id (scope to one customer) and/or status (one of: draft, sent, paid, overdue). USE WHEN browsing or reporting. DO NOT USE when you already have a specific invoice_id \u2014 use financeInvoiceGet. Returns a paginated list ordered by created_at desc."
-            }
-        },
-        "/governed/payments/approve": {
-            "post": {
-                "tags": [
-                    "governed"
-                ],
-                "summary": "financePaymentApprove",
-                "operationId": "financePaymentApprove",
-                "parameters": [
-                    {
-                        "name": "invoice_id",
-                        "in": "query",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "Invoice Id",
-                            "description": "Identifier of the invoice to approve for payment."
-                        },
-                        "description": "Identifier of the invoice to approve for payment."
-                    },
-                    {
-                        "name": "approver",
-                        "in": "query",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "Approver",
-                            "description": "Identifier of the user or system authorizing the payment (e.g. an email or service principal name)."
-                        },
-                        "description": "Identifier of the user or system authorizing the payment (e.g. an email or service principal name)."
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/PaymentApproval"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                },
-                "description": "Approve payment release for an existing invoice. USE WHEN a human or upstream workflow has authorized payment. Required: invoice_id, approver. Idempotent: re-approving an already-approved invoice returns the existing approval. DOES NOT execute the payment \u2014 downstream payment-rails tool is responsible."
-            }
-        },
-        "/governed/quotes/{symbol}": {
-            "get": {
-                "tags": [
-                    "governed"
-                ],
-                "summary": "financeQuoteGet",
-                "operationId": "financeQuoteGet",
-                "parameters": [
-                    {
-                        "name": "symbol",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "Symbol",
-                            "description": "Ticker symbol in uppercase, e.g. 'MSFT'."
-                        },
-                        "description": "Ticker symbol in uppercase, e.g. 'MSFT'."
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Quote"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                },
-                "description": "Get the current market quote (bid/ask/last) for a ticker symbol. USE WHEN you need real-time pricing for a decision. Symbol format: uppercase ticker, e.g. MSFT. Quotes are advisory only \u2014 they are NOT execution prices and may be stale up to 250ms."
-            }
-        }
+        "description": "Search customers by partial match on name or email. USE WHEN you need to find a customer by descriptive text, or BEFORE creating a new customer to check for duplicates. DO NOT USE for exact id lookup \u2014 use financeCustomerGet instead. Returns up to 25 matches ranked by relevance."
+      }
     },
-    "components": {
-        "schemas": {
-            "CreateCustomerBody": {
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "title": "Name"
-                    },
-                    "email": {
-                        "type": "string",
-                        "title": "Email"
-                    },
-                    "tier": {
-                        "type": "string",
-                        "title": "Tier",
-                        "default": "bronze"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "name",
-                    "email"
-                ],
-                "title": "CreateCustomerBody"
+    "/governed/invoices/{invoice_id}": {
+      "get": {
+        "tags": [
+          "governed"
+        ],
+        "summary": "financeInvoiceGet",
+        "operationId": "financeInvoiceGet",
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Invoice Id",
+              "description": "Exact invoice identifier, e.g. 'inv-1001'."
             },
-            "CreateCustomerRequest": {
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "title": "Name",
-                        "examples": [
-                            "Acme Corp"
-                        ]
-                    },
-                    "email": {
-                        "type": "string",
-                        "title": "Email",
-                        "examples": [
-                            "ap@acme.example"
-                        ]
-                    },
-                    "tier": {
-                        "type": "string",
-                        "title": "Tier",
-                        "default": "bronze",
-                        "examples": [
-                            "bronze",
-                            "silver",
-                            "gold"
-                        ]
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "name",
-                    "email"
-                ],
-                "title": "CreateCustomerRequest"
-            },
-            "CreateInvoiceRequest": {
-                "properties": {
-                    "customer_id": {
-                        "type": "string",
-                        "title": "Customer Id"
-                    },
-                    "amount": {
-                        "type": "number",
-                        "title": "Amount"
-                    },
-                    "currency": {
-                        "type": "string",
-                        "title": "Currency",
-                        "default": "USD"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "customer_id",
-                    "amount"
-                ],
-                "title": "CreateInvoiceRequest"
-            },
-            "Customer": {
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "title": "Id"
-                    },
-                    "name": {
-                        "type": "string",
-                        "title": "Name"
-                    },
-                    "email": {
-                        "type": "string",
-                        "title": "Email"
-                    },
-                    "tier": {
-                        "type": "string",
-                        "title": "Tier"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "id",
-                    "name",
-                    "email",
-                    "tier"
-                ],
-                "title": "Customer"
-            },
-            "CustomerOut": {
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "title": "Id"
-                    },
-                    "name": {
-                        "type": "string",
-                        "title": "Name"
-                    },
-                    "email": {
-                        "type": "string",
-                        "title": "Email"
-                    },
-                    "tier": {
-                        "type": "string",
-                        "title": "Tier"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "id",
-                    "name",
-                    "email",
-                    "tier"
-                ],
-                "title": "CustomerOut"
-            },
-            "HTTPValidationError": {
-                "properties": {
-                    "detail": {
-                        "items": {
-                            "$ref": "#/components/schemas/ValidationError"
-                        },
-                        "type": "array",
-                        "title": "Detail"
-                    }
-                },
-                "type": "object",
-                "title": "HTTPValidationError"
-            },
-            "Invoice": {
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "title": "Id"
-                    },
-                    "customer_id": {
-                        "type": "string",
-                        "title": "Customer Id"
-                    },
-                    "amount": {
-                        "type": "number",
-                        "title": "Amount"
-                    },
-                    "currency": {
-                        "type": "string",
-                        "title": "Currency"
-                    },
-                    "status": {
-                        "type": "string",
-                        "title": "Status"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "id",
-                    "customer_id",
-                    "amount",
-                    "currency",
-                    "status"
-                ],
-                "title": "Invoice"
-            },
-            "InvoiceCreateLegacy": {
-                "properties": {
-                    "cust": {
-                        "type": "string",
-                        "title": "Cust",
-                        "description": "customer id (legacy field name)"
-                    },
-                    "total": {
-                        "type": "number",
-                        "title": "Total",
-                        "description": "amount (legacy field name)"
-                    },
-                    "ccy": {
-                        "type": "string",
-                        "title": "Ccy",
-                        "description": "currency (legacy field name)",
-                        "default": "USD"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "cust",
-                    "total"
-                ],
-                "title": "InvoiceCreateLegacy",
-                "description": "Legacy schema: cust + total fields, different keys entirely."
-            },
-            "InvoiceCreateV1": {
-                "properties": {
-                    "customer_id": {
-                        "type": "string",
-                        "title": "Customer Id"
-                    },
-                    "amount": {
-                        "type": "number",
-                        "title": "Amount"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "customer_id",
-                    "amount"
-                ],
-                "title": "InvoiceCreateV1",
-                "description": "Old schema: customer_id + amount only."
-            },
-            "InvoiceCreateV2": {
-                "properties": {
-                    "customer_id": {
-                        "type": "string",
-                        "title": "Customer Id"
-                    },
-                    "amount": {
-                        "type": "number",
-                        "title": "Amount"
-                    },
-                    "currency": {
-                        "type": "string",
-                        "title": "Currency",
-                        "default": "USD"
-                    },
-                    "due_date": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Due Date"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "customer_id",
-                    "amount"
-                ],
-                "title": "InvoiceCreateV2",
-                "description": "New schema: adds currency + due_date."
-            },
-            "PaymentApproval": {
-                "properties": {
-                    "invoice_id": {
-                        "type": "string",
-                        "title": "Invoice Id"
-                    },
-                    "approved": {
-                        "type": "boolean",
-                        "title": "Approved"
-                    },
-                    "approver": {
-                        "type": "string",
-                        "title": "Approver"
-                    },
-                    "timestamp": {
-                        "type": "string",
-                        "title": "Timestamp"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "invoice_id",
-                    "approved",
-                    "approver",
-                    "timestamp"
-                ],
-                "title": "PaymentApproval"
-            },
-            "Quote": {
-                "properties": {
-                    "symbol": {
-                        "type": "string",
-                        "title": "Symbol"
-                    },
-                    "price": {
-                        "type": "number",
-                        "title": "Price"
-                    },
-                    "currency": {
-                        "type": "string",
-                        "title": "Currency"
-                    },
-                    "timestamp": {
-                        "type": "string",
-                        "title": "Timestamp"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "symbol",
-                    "price",
-                    "currency",
-                    "timestamp"
-                ],
-                "title": "Quote"
-            },
-            "ValidationError": {
-                "properties": {
-                    "loc": {
-                        "items": {
-                            "anyOf": [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "integer"
-                                }
-                            ]
-                        },
-                        "type": "array",
-                        "title": "Location"
-                    },
-                    "msg": {
-                        "type": "string",
-                        "title": "Message"
-                    },
-                    "type": {
-                        "type": "string",
-                        "title": "Error Type"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "loc",
-                    "msg",
-                    "type"
-                ],
-                "title": "ValidationError"
+            "description": "Exact invoice identifier, e.g. 'inv-1001'."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
             }
-        }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retrieve a single invoice by exact invoice_id. USE WHEN you have a specific invoice_id and need its full detail (line items, status, amount, customer reference). DO NOT USE for browsing or filtering \u2014 use financeInvoiceList."
+      }
     },
-    "servers": [
-        {
-            "url": "REPLACE_WITH_NGROK_URL"
+    "/governed/invoices": {
+      "post": {
+        "tags": [
+          "governed"
+        ],
+        "summary": "financeInvoiceCreate",
+        "operationId": "financeInvoiceCreate",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvoiceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create a new invoice for an existing customer. USE WHEN the customer is already created/verified and you need to bill them. Required: customer_id, amount. Optional: currency (defaults to USD). DOES NOT send the invoice \u2014 only persists it in 'draft' status."
+      },
+      "get": {
+        "tags": [
+          "governed"
+        ],
+        "summary": "financeInvoiceList",
+        "operationId": "financeInvoiceList",
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id",
+              "description": "Optional. Restrict results to invoices for a single customer (e.g. 'c-001')."
+            },
+            "description": "Optional. Restrict results to invoices for a single customer (e.g. 'c-001')."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "Optional. Filter by invoice status. One of: 'draft', 'sent', 'paid', 'overdue'."
+            },
+            "description": "Optional. Filter by invoice status. One of: 'draft', 'sent', 'paid', 'overdue'."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Invoice"
+                  },
+                  "title": "Response Finance Invoice List"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "List invoices with optional filters: customer_id (scope to one customer) and/or status (one of: draft, sent, paid, overdue). USE WHEN browsing or reporting. DO NOT USE when you already have a specific invoice_id \u2014 use financeInvoiceGet. Returns a paginated list ordered by created_at desc."
+      }
+    },
+    "/governed/payments/approve": {
+      "post": {
+        "tags": [
+          "governed"
+        ],
+        "summary": "financePaymentApprove",
+        "operationId": "financePaymentApprove",
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Invoice Id",
+              "description": "Identifier of the invoice to approve for payment."
+            },
+            "description": "Identifier of the invoice to approve for payment."
+          },
+          {
+            "name": "approver",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Approver",
+              "description": "Identifier of the user or system authorizing the payment (e.g. an email or service principal name)."
+            },
+            "description": "Identifier of the user or system authorizing the payment (e.g. an email or service principal name)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentApproval"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Approve payment release for an existing invoice. USE WHEN a human or upstream workflow has authorized payment. Required: invoice_id, approver. Idempotent: re-approving an already-approved invoice returns the existing approval. DOES NOT execute the payment \u2014 downstream payment-rails tool is responsible."
+      }
+    },
+    "/governed/quotes/{symbol}": {
+      "get": {
+        "tags": [
+          "governed"
+        ],
+        "summary": "financeQuoteGet",
+        "operationId": "financeQuoteGet",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol",
+              "description": "Ticker symbol in uppercase, e.g. 'MSFT'."
+            },
+            "description": "Ticker symbol in uppercase, e.g. 'MSFT'."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Get the current market quote (bid/ask/last) for a ticker symbol. USE WHEN you need real-time pricing for a decision. Symbol format: uppercase ticker, e.g. MSFT. Quotes are advisory only \u2014 they are NOT execution prices and may be stale up to 250ms."
+      }
+    },
+    "/governed/quotes/{symbol}/fetch": {
+      "get": {
+        "operationId": "financeQuoteFetch",
+        "summary": "financeQuoteFetch",
+        "description": "Fetch a real-time stock market quote (price, volume, change) for a given ticker symbol. USE WHEN you need current pricing for a single instrument. DO NOT USE for batch lookups.",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Quote"
+          }
         }
-    ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateCustomerBody": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier",
+            "default": "bronze"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email"
+        ],
+        "title": "CreateCustomerBody"
+      },
+      "CreateCustomerRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "examples": [
+              "Acme Corp"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "examples": [
+              "ap@acme.example"
+            ]
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier",
+            "default": "bronze",
+            "examples": [
+              "bronze",
+              "silver",
+              "gold"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email"
+        ],
+        "title": "CreateCustomerRequest"
+      },
+      "CreateInvoiceRequest": {
+        "properties": {
+          "customer_id": {
+            "type": "string",
+            "title": "Customer Id"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "USD"
+          }
+        },
+        "type": "object",
+        "required": [
+          "customer_id",
+          "amount"
+        ],
+        "title": "CreateInvoiceRequest"
+      },
+      "Customer": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email",
+          "tier"
+        ],
+        "title": "Customer"
+      },
+      "CustomerOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email",
+          "tier"
+        ],
+        "title": "CustomerOut"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Invoice": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "customer_id": {
+            "type": "string",
+            "title": "Customer Id"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "customer_id",
+          "amount",
+          "currency",
+          "status"
+        ],
+        "title": "Invoice"
+      },
+      "InvoiceCreateLegacy": {
+        "properties": {
+          "cust": {
+            "type": "string",
+            "title": "Cust",
+            "description": "customer id (legacy field name)"
+          },
+          "total": {
+            "type": "number",
+            "title": "Total",
+            "description": "amount (legacy field name)"
+          },
+          "ccy": {
+            "type": "string",
+            "title": "Ccy",
+            "description": "currency (legacy field name)",
+            "default": "USD"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cust",
+          "total"
+        ],
+        "title": "InvoiceCreateLegacy",
+        "description": "Legacy schema: cust + total fields, different keys entirely."
+      },
+      "InvoiceCreateV1": {
+        "properties": {
+          "customer_id": {
+            "type": "string",
+            "title": "Customer Id"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "customer_id",
+          "amount"
+        ],
+        "title": "InvoiceCreateV1",
+        "description": "Old schema: customer_id + amount only."
+      },
+      "InvoiceCreateV2": {
+        "properties": {
+          "customer_id": {
+            "type": "string",
+            "title": "Customer Id"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "USD"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "customer_id",
+          "amount"
+        ],
+        "title": "InvoiceCreateV2",
+        "description": "New schema: adds currency + due_date."
+      },
+      "PaymentApproval": {
+        "properties": {
+          "invoice_id": {
+            "type": "string",
+            "title": "Invoice Id"
+          },
+          "approved": {
+            "type": "boolean",
+            "title": "Approved"
+          },
+          "approver": {
+            "type": "string",
+            "title": "Approver"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "invoice_id",
+          "approved",
+          "approver",
+          "timestamp"
+        ],
+        "title": "PaymentApproval"
+      },
+      "Quote": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "price",
+          "currency",
+          "timestamp"
+        ],
+        "title": "Quote"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "REPLACE_WITH_NGROK_URL"
+    }
+  ]
 }
