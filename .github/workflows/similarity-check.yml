@@ -134,6 +134,9 @@ jobs:
           SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
           SEARCH_INDEX: ${{ secrets.SEARCH_INDEX }}
           SEARCH_ADMIN_KEY: ${{ secrets.SEARCH_ADMIN_KEY }}
+          # Threshold for DUPLICATE verdict. Override via repo variable to tune
+          # gate sensitivity without code changes. Default 0.88 ships in config.py.
+          CLUSTER_THRESHOLD: ${{ vars.CLUSTER_THRESHOLD }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         working-directory: apps/dup-resolver
         shell: bash
