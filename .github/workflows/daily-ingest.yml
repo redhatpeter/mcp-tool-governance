@@ -1,0 +1,97 @@
+name: daily-ingest
+
+# Belt-and-braces backup for ingest-on-merge.yml. If a merge-time run
+# fails (AOAI quota, AAD outage, transient Search 5xx) and nobody
+# notices, the index drifts until the next merge. This nightly cron
+# guarantees the index is reconciled at most once every 24h regardless
+# of merge cadence — which is also what the >24h staleness alert in
+# check_pr.py is calibrated against.
+#
+# Runs at 04:17 UTC daily (off-peak for both eastus AOAI and ubuntu-latest
+# runner pools). Manually triggerable for ad-hoc reconciliation.
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  # Same group as ingest-on-merge so a scheduled run + a merge can't
+  # race on index writes. Latest wins.
+  group: ingest-on-merge-refs/heads/main
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r apps/dup-resolver/requirements.txt
+
+      - name: Check secrets availability
+        id: secrets_check
+        env:
+          AOAI_ENDPOINT: ${{ secrets.AOAI_ENDPOINT }}
+          AOAI_API_KEY: ${{ secrets.AOAI_API_KEY }}
+          SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
+          SEARCH_ADMIN_KEY: ${{ secrets.SEARCH_ADMIN_KEY }}
+        run: |
+          if [ -n "$AOAI_ENDPOINT" ] && [ -n "$AOAI_API_KEY" ] \
+             && [ -n "$SEARCH_ENDPOINT" ] && [ -n "$SEARCH_ADMIN_KEY" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "::warning::daily-ingest skipped — required secrets not set."
+          fi
+
+      - name: Re-ingest index from OpenAPI specs
+        if: steps.secrets_check.outputs.ready == 'true'
+        env:
+          AOAI_ENDPOINT: ${{ secrets.AOAI_ENDPOINT }}
+          AOAI_API_KEY: ${{ secrets.AOAI_API_KEY }}
+          AOAI_EMBEDDING_DEPLOYMENT: ${{ secrets.AOAI_EMBEDDING_DEPLOYMENT }}
+          SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
+          SEARCH_INDEX: ${{ secrets.SEARCH_INDEX }}
+          SEARCH_ADMIN_KEY: ${{ secrets.SEARCH_ADMIN_KEY }}
+          MCP_SOURCE: openapi
+          OPENAPI_SPEC_DIR: apim/openapi
+        shell: bash
+        run: |
+          set -o pipefail
+          : "${AOAI_EMBEDDING_DEPLOYMENT:=text-embedding-3-large}"
+          : "${SEARCH_INDEX:=mcp-tool-fingerprints}"
+          export AOAI_EMBEDDING_DEPLOYMENT SEARCH_INDEX
+          python apps/dup-resolver/ingest.py | tee /tmp/ingest-summary.json
+
+      - name: Post summary
+        if: steps.secrets_check.outputs.ready == 'true'
+        run: |
+          {
+            echo "## Nightly index reconciliation"
+            echo
+            echo '```json'
+            cat /tmp/ingest-summary.json | python -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          slim = {
+              'status': d.get('status'),
+              'tools': d.get('tools'),
+              'clusters': d.get('clusters'),
+              'indexed': d.get('indexed'),
+              'deleted_stale': d.get('deleted_stale'),
+              'stale_ids': d.get('stale_ids'),
+              'collisions_dropped': d.get('collisions_dropped'),
+          }
+          print(json.dumps(slim, indent=2))
+          "
+            echo '```'
+            echo
+            echo "_Triggered by: ${{ github.event_name }}_"
+          } >> $GITHUB_STEP_SUMMARY

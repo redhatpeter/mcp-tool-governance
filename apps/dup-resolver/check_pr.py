@@ -236,11 +236,31 @@ def render_report(results: list[dict[str, Any]]) -> str:
     if freshness:
         # Min freshness = oldest top-hit observed; helps reviewers spot a stale index.
         oldest = min(freshness)
+        # Soft alert: if oldest > 24h ago, bold the footer + warning emoji so
+        # reviewers don't trust the score blindly. Threshold is generous enough
+        # to absorb a missed nightly run without crying wolf.
+        is_stale = False
+        try:
+            from datetime import datetime, timezone, timedelta
+            # Accept Zulu suffix; strip if present so fromisoformat() works on <3.11.
+            iso = oldest.rstrip("Z")
+            ts = datetime.fromisoformat(iso).replace(tzinfo=timezone.utc)
+            is_stale = (datetime.now(timezone.utc) - ts) > timedelta(hours=24)
+        except Exception:
+            # If we can't parse, render without the alert rather than crashing.
+            is_stale = False
         lines.append("")
-        lines.append(
-            f"_Index freshness: oldest top-hit `last_seen_utc` = {oldest} "
-            f"(re-run `ingest-on-merge` workflow if this looks stale)._"
-        )
+        if is_stale:
+            lines.append(
+                f"**⚠️ Stale index — oldest top-hit `last_seen_utc` = {oldest} "
+                f"(>24h old). Re-run the `ingest-on-merge` workflow before "
+                f"trusting these scores.**"
+            )
+        else:
+            lines.append(
+                f"_Index freshness: oldest top-hit `last_seen_utc` = {oldest} "
+                f"(re-run `ingest-on-merge` workflow if this looks stale)._"
+            )
     return "\n".join(lines) + "\n"
 
 

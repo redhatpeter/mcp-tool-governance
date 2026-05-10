@@ -15,6 +15,9 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ Documented `CLUSTER_THRESHOLD` policy in `apps/dup-resolver/README.md`
 - ✅ Refreshed `docs/samples/demo-transcript.md` Act 4 to the 0.92 / 0.958 verdict
 - ✅ Closed PR #1 with summary comment, deleted branch
+- ✅ Stale-index alert (>24h → bold ⚠️ banner in `check_pr.py` footer)
+- ✅ `daily-ingest.yml` nightly backstop (04:17 UTC, same concurrency group)
+- ✅ Performance budget + index-hygiene tiers documented in dup-resolver README
 
 ## P0 — operational gaps that will bite us next demo
 
@@ -40,22 +43,17 @@ versions, refreshed demo transcript and threshold docs.
 
 ## P1 — gaps that would improve operability
 
-- [ ] **CI cold-start budget documentation**
-  Local script-cold elapsed: 1 op = 6.7s, 5 = 7.6s, 20 = 12.1s. CI
-  runner spin-up adds ~30s on top. Document expected end-to-end CI time
-  in `apps/dup-resolver/README.md` so reviewers know what "normal"
-  looks like and what to investigate when a run takes 5×.
+- [ ] **Trigger and observe a `daily-ingest` cron run end-to-end**
+  Workflow lands today; first scheduled fire is 04:17 UTC tomorrow.
+  Validate with `gh workflow run daily-ingest.yml` once, confirm
+  reconciliation summary renders, and document the link in next
+  session's handoff.
 
-- [ ] **Daily cron `ingest.py` as belt-and-braces backup**
-  `ingest-on-merge` covers the happy path. If a run fails (AOAI quota,
-  AAD outage), the index drifts until next merge. Add a scheduled
-  workflow (`cron: '17 4 * * *'`) that runs `ingest.py` and posts a
-  short summary to the workflow run page. Same secrets, same step.
-
-- [ ] **Index freshness alert threshold**
-  The verdict footer now reports oldest `last_seen_utc`. Add a soft
-  alert: if `(now - oldest) > 24h`, render the footer in **bold** and
-  prepend "⚠️ stale index" so reviewers don't trust the score blindly.
+- [ ] **Backfill ARCHITECTURE.md §14 with the implementation drift**
+  Design doc still describes L2 as the FastAPI service. Real impl is
+  `check_pr.py` for CI + service for demo. Add a callout pointing to
+  `apps/dup-resolver/README.md` so readers don't go looking for
+  `/similarity` in CI.
 
 ## P2 — polish
 

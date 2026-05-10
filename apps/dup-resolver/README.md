@@ -182,3 +182,61 @@ Scenarios cover: clean-no-change, novel-op (OK), exact-rename (DUPLICATE),
 strong-paraphrase (DUPLICATE), weak-paraphrase (WARN), cross-server
 (threshold-tolerant), malformed-JSON (exit 2), rename-detected (INFO,
 exit 0), and multi-file-pr (two specs in one PR).
+
+## Performance budget — what "normal" looks like
+
+Numbers below are from a warm AOAI deployment (`text-embedding-3-large`,
+eastus) and AI Search (`ai102srch193837986`). Use these as triage
+anchors: a 5× regression on any line is worth investigating before
+chalking it up to network jitter.
+
+### Local — `check_pr.py` cold (Python interpreter freshly invoked)
+
+| Operations scored | Wall clock | Notes |
+|---|---|---|
+| 1 | ~6.7s | Dominated by AOAI handshake + first embed call |
+| 5 | ~7.6s | Embed batching amortizes the AOAI cost |
+| 20 | ~12.1s | Linear in op count once the connection is warm |
+
+Source: `LATENCY BUDGET` block emitted by `tests/run_scenarios.sh`.
+
+### CI — end-to-end workflow time
+
+| Workflow | Typical | Cold-cache outliers |
+|---|---|---|
+| `validate-mcp-tools` (L1 lint, stdlib only) | ~25s | ~40s |
+| `similarity-check` (L2 PR gate) | ~60–90s | ~120s |
+| `ingest-on-merge` (Option A reconciliation) | ~50–70s | ~100s |
+| `daily-ingest` (nightly cron) | ~50–70s | same |
+
+Breakdown of a typical `similarity-check` run:
+
+| Phase | ~Time | Notes |
+|---|---|---|
+| Runner spin-up | 10–15s | Out of our control |
+| Checkout + Python setup | 5–10s | Cached on most runners |
+| `pip install -r requirements.txt` | 20–30s | Largest single phase |
+| `check_pr.py` (1–5 ops) | 7–10s | The actual gate |
+| Markdown summary post | <1s | |
+
+**When to investigate:** any `similarity-check` run > 5 minutes, any
+`ingest-on-merge` run > 4 minutes, or `check_pr.py` local runs that
+take more than 30s for a single op. Most often the cause is AOAI
+throttling (HTTP 429) or AI Search 5xx — both surface in the workflow
+log under the relevant step.
+
+## Index hygiene — two-tier reconciliation
+
+The index can drift between merges (failed ingest run, manual portal
+edits, schema migrations). We defend with two workflows + one PR-time
+signal:
+
+| Layer | What | When |
+|---|---|---|
+| 1. `ingest-on-merge.yml` | Re-embed + delete stale docs on every push to `main` | Per-merge, low-latency |
+| 2. `daily-ingest.yml` | Same logic, scheduled at 04:17 UTC | Daily backstop |
+| 3. Stale-index alert in `check_pr.py` | Bold ⚠️ banner in the PR verdict if oldest top-hit `last_seen_utc` > 24h | At PR time |
+
+Layers 1+2 keep the index fresh; layer 3 lets reviewers know if both
+have failed and they shouldn't trust the score until someone re-runs
+`workflow_dispatch` on either.
