@@ -24,6 +24,9 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # for azure/login OIDC
     steps:
       - uses: actions/checkout@v5
 
@@ -35,27 +38,35 @@ jobs:
       - name: Install deps
         run: pip install -r apps/dup-resolver/requirements.txt
 
+      - name: Azure login (OIDC)
+        if: vars.AZURE_CLIENT_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
       - name: Check secrets availability
         id: secrets_check
         env:
           AOAI_ENDPOINT: ${{ secrets.AOAI_ENDPOINT }}
-          AOAI_API_KEY: ${{ secrets.AOAI_API_KEY }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
           SEARCH_ADMIN_KEY: ${{ secrets.SEARCH_ADMIN_KEY }}
         run: |
-          if [ -n "$AOAI_ENDPOINT" ] && [ -n "$AOAI_API_KEY" ] \
+          if [ -n "$AOAI_ENDPOINT" ] && [ -n "$AZURE_CLIENT_ID" ] \
              && [ -n "$SEARCH_ENDPOINT" ] && [ -n "$SEARCH_ADMIN_KEY" ]; then
             echo "ready=true" >> $GITHUB_OUTPUT
           else
             echo "ready=false" >> $GITHUB_OUTPUT
-            echo "::warning::daily-ingest skipped — required secrets not set."
+            echo "::warning::daily-ingest skipped — required secrets/vars not set."
           fi
 
       - name: Re-ingest index from OpenAPI specs
         if: steps.secrets_check.outputs.ready == 'true'
         env:
           AOAI_ENDPOINT: ${{ secrets.AOAI_ENDPOINT }}
-          AOAI_API_KEY: ${{ secrets.AOAI_API_KEY }}
+          # AOAI uses AAD via DefaultAzureCredential (azure/login above).
           AOAI_EMBEDDING_DEPLOYMENT: ${{ secrets.AOAI_EMBEDDING_DEPLOYMENT }}
           SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
           SEARCH_INDEX: ${{ secrets.SEARCH_INDEX }}
