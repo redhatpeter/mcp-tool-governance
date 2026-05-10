@@ -54,6 +54,28 @@ MCP_SERVERS = [s.strip() for s in _env("MCP_SERVERS", "governed-mcp,messy-mcp").
 EMBEDDING_DIMS = int(_env("EMBEDDING_DIMS", "3072"))
 CLUSTER_THRESHOLD = float(_env("CLUSTER_THRESHOLD", "0.88"))
 
+# --- Canonical map (Cosmos) ---
+# L2 elects a canonical per cluster and writes it here for L3 to read.
+# Auth precedence mirrors the search client:
+#   1. COSMOS_KEY env var (preferred for CI)
+#   2. COSMOS_KEY_FILE pointing to a file with the master key
+#   3. DefaultAzureCredential (RBAC, when the account allows AAD data-plane)
+# If COSMOS_ENDPOINT is empty, the writer no-ops with a warning so
+# the rest of ingest still runs (useful for early-stage local dev).
+COSMOS_ENDPOINT = _env("COSMOS_ENDPOINT", "")
+COSMOS_DATABASE = _env("COSMOS_DATABASE", "governance")
+COSMOS_CONTAINER = _env("COSMOS_CONTAINER", "mcp-canonical-map")
+COSMOS_KEY = _env("COSMOS_KEY", "")
+COSMOS_KEY_FILE = _env("COSMOS_KEY_FILE", "")
+
+
+def cosmos_key() -> str:
+    if COSMOS_KEY:
+        return COSMOS_KEY
+    if COSMOS_KEY_FILE:
+        return Path(COSMOS_KEY_FILE).read_text().strip()
+    return ""
+
 
 @lru_cache(maxsize=1)
 def credential() -> DefaultAzureCredential:

@@ -24,6 +24,9 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ Spec-source manifest (`apim/openapi/_servers.yaml`) replaces hard-coded `SERVER_BY_FILE`
 - ✅ Lint integration with manifest — new rule **E007** (spec stem must be declared)
 - ✅ Manifest `unmanaged:` list + lint exemption — fixes pre-existing CI failure on demo prop
+- ✅ Precision/recall scaffold — labeled set + sweep evaluator + first report
+- ✅ Fingerprint variant A/B harness (`--compare`, 5 shapes) — production fingerprint kept
+- ✅ L3 step 1 — canonical_map writer (Cosmos `governance.mcp-canonical-map`)
 
 ## P0 — operational gaps that will bite us next demo
 
@@ -55,12 +58,6 @@ versions, refreshed demo transcript and threshold docs.
   reconciliation summary renders, and document the link in next
   session's handoff.
 
-- [ ] **Backfill ARCHITECTURE.md §14 with the implementation drift**
-  Design doc still describes L2 as the FastAPI service. Real impl is
-  `check_pr.py` for CI + service for demo. Add a callout pointing to
-  `apps/dup-resolver/README.md` so readers don't go looking for
-  `/similarity` in CI.
-
 ## P2 — polish
 
 _All P2 items complete in this session. Track new polish items here as
@@ -68,40 +65,30 @@ they surface._
 
 ## P3 — exploration / future work
 
-- [ ] **MCP-side enforcement (L3)**
+- [ ] **MCP-side enforcement (L3) — runtime rewriting**
   L1 (lint) and L2 (similarity CI) are design-time. L3 — runtime
   enforcement via the MCP gateway / APIM policy — is sketched in
-  `docs/ARCHITECTURE.md` §3.4 but not implemented. Would close the
-  loophole where a duplicate slips through both L1 and L2 (e.g. via a
-  force-merge, or via a new MCP server added outside the PR flow).
+  `docs/ARCHITECTURE.md` §3.4 but not implemented.
+  - [x] **L3 step 1** — canonical_map writer. L2 now persists each
+    election to Cosmos `governance.mcp-canonical-map` (one doc per
+    cluster, partitioned by `/canonical_id`). Writer is optional-by-
+    default — empty `COSMOS_ENDPOINT` no-ops; AAD or key auth.
+    Reconcile mirrors the AI Search ghost-doc cleanup.
+  - [ ] **L3 step 2** — APIM `tools/list` policy reads canonical_map
+    and rewrites the response so non-canonical members are dropped (or
+    relabeled) before the LLM ever sees them. This is the runtime gate.
+  - [ ] **L3 step 3** — `tools/call` policy enforces the canonical
+    mapping (caller named a non-canonical → 308 / rewrite or 409 / fail).
+  - [ ] **L3 step 4** — wire `COSMOS_ENDPOINT` into ingest workflows
+    (`ingest-on-merge`, `daily-ingest`) so production canonical_map
+    stays in sync without local runs.
 
-- [x] **Quantitative precision/recall study (scaffold)**
-  Labeled pair set at `apps/dup-resolver/tests/labeled_pairs.yaml`
-  (~25 pairs across syntactic/semantic/cross-server dups and hard
-  negatives). Evaluator at `apps/dup-resolver/eval_threshold.py`
-  embeds, sweeps thresholds, reports P/R/F1 + per-pair scores +
-  separability margin. First run published to
-  `docs/eval/precision-recall.md` shows L2 is high-precision
-  (1.000 at ≥0.85) and lower-recall (~0.21 at 0.92), with a
-  negative separability margin on the hardest semantic dups.
-  **Next iteration:** grow the labeled set from real PRs (target
-  30–50) and revisit the threshold + fingerprint shape choices.
-
-- [x] **Fingerprint variant A/B harness** — `--compare` evaluates
-  baseline + 4 alternative shapes against the labeled set in one
-  run. On the current 26 pairs, `combined` (no-domain + synonyms +
-  description-heavy) reduces the separability margin from −0.076 to
-  −0.028 and lifts F1@0.92 from 0.353 to 0.444. **Production
-  fingerprint unchanged** — not enough evidence on 26 pairs to
-  re-ingest. Revisit at ~50 real-world pairs.
-
-- [ ] **Quantitative precision/recall study (~~scaffold~~)** — above.
-  Original ask: 30–50 pairs from real-world MCP servers. Current set
-  is 26 pairs from the two demo specs. Open until we have a labeled
-  set drawn from outside-the-repo sources.
-
-- [ ] **Spec source plurality** — **complete**. Manifest at
-  `apim/openapi/_servers.yaml` is now the source of truth, and
-  `tools-cli/lint.py` enforces it via E007 (unknown stems fail the
-  PR). Leave this entry until a new server is added in anger to
-  confirm the workflow.
+- [ ] **Quantitative precision/recall — grow the labeled set**
+  Scaffold complete: `apps/dup-resolver/tests/labeled_pairs.yaml` (26
+  pairs from the two demo specs), `apps/dup-resolver/eval_threshold.py`
+  (sweep + `--compare` A/B over 5 fingerprint variants), report at
+  `docs/eval/precision-recall.md`. Open until the labeled set reaches
+  30–50 pairs drawn from real-world (outside-the-repo) MCP servers.
+  At that point, re-evaluate whether to adopt the `combined` variant
+  in production `fingerprint.py` (current best on the stress set:
+  margin −0.028 vs baseline −0.076).

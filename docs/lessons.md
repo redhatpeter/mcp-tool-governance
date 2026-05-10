@@ -6,6 +6,31 @@ few lines on what we hit and what to do (or avoid) next time.
 
 ---
 
+## 2026-05-10 — Cosmos `cosmoslab82658` has local auth disabled too
+
+**Symptom:** First run of the new `canonical_map.py` writer with
+`COSMOS_KEY_FILE` set returned `(Unauthorized) Local Authorization is
+disabled. Use an AAD token to authorize all requests.` on the very first
+metadata call (`GetDatabaseAccount`).
+
+**Root cause:** Same Azure Policy pattern as `common-open-ai` —
+`Cosmos_DisableLocalAuth_Modify` (or equivalent) re-disables the master
+key after any path that toggles it off. Doesn't matter that `az cosmosdb
+keys list` returns a key; the data plane refuses it.
+
+**Fix:** unset `COSMOS_KEY` / `COSMOS_KEY_FILE` and let the writer fall
+through to `DefaultAzureCredential`. The signed-in user already had
+`Cosmos DB Built-in Data Contributor`
+(`00000000-0000-0000-0000-000000000002`) at account scope, so AAD
+worked first try.
+
+**Lesson:** assume *every* PaaS account in this subscription has local
+auth disabled or about to be — design auth precedence (key → AAD)
+universally, never key-only. The optional-key path is what lets the
+writer no-op cleanly when an environment hasn't set up either.
+
+---
+
 ## 2026-05-10 — Demo props in a CI-linted directory will fail your linter eventually
 
 **Symptom:** `validate-mcp-tools` had been silently failing for ~12 hours on

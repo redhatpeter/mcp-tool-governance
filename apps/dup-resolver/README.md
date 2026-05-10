@@ -312,3 +312,76 @@ Latest run on the 26-pair set ranked the variants by separability margin:
 halves the overlap. **No production change yet** — 26 pairs isn't enough
 evidence to invalidate the index and re-ingest. Revisit when the labeled
 set reaches ≈50 real-world pairs.
+
+## Canonical map — L2 → L3 handoff
+
+After clustering and electing a canonical per cluster, ingest writes one
+document per cluster to a Cosmos SQL container so L3 (runtime APIM
+policy, future) can point-read the decision without re-running L2.
+
+**Container:** `governance.mcp-canonical-map` on `cosmoslab82658`,
+partitioned by `/canonical_id`.
+
+**Schema (one doc per cluster):**
+
+```jsonc
+{
+  "id":              "<canonical_id>",   // == server__name
+  "canonical_id":    "<canonical_id>",   // == partition key
+  "cluster_id":      "<cluster_id>",
+  "canonical_server":"governed-mcp",
+  "canonical_name":  "financeCustomerCreate",
+  "score":           1.0,
+  "score_breakdown": { "governed":0.30, "name":0.10, ... },
+  "members": [
+    { "id":"<doc_id>", "server":"...", "name":"...", "is_canonical":true|false }
+  ],
+  "members_count":    3,
+  "last_updated_utc": "2026-05-10T...Z",
+  "ingest_run_id":    "<GITHUB_SHA or uuid>"
+}
+```
+
+**Wiring:**
+
+```bash
+# .env (or export)
+COSMOS_ENDPOINT=https://cosmoslab82658.documents.azure.com:443/
+COSMOS_DATABASE=governance
+COSMOS_CONTAINER=mcp-canonical-map
+# Auth precedence — first match wins:
+#   COSMOS_KEY     env var (master key)         [if local auth allowed]
+#   COSMOS_KEY_FILE path to file w/ master key  [if local auth allowed]
+#   DefaultAzureCredential                       [requires AAD data-plane RBAC]
+```
+
+`cosmoslab82658` has **local auth disabled by Azure Policy**, so
+production / CI will use the AAD path. The principal needs `Cosmos DB
+Built-in Data Contributor` (`00000000-0000-0000-0000-000000000002`) at
+account scope or tighter:
+
+```bash
+PRINCIPAL=$(az ad signed-in-user show --query id -o tsv)
+az cosmosdb sql role assignment create -a cosmoslab82658 -g cosmos-ws \
+  --role-definition-id 00000000-0000-0000-0000-000000000002 \
+  --principal-id "$PRINCIPAL" \
+  --scope "/"
+```
+
+**Disabling the writer:** leave `COSMOS_ENDPOINT` empty. The rest of
+ingest still runs; you'll see a one-time `[canonical_map] disabled`
+log line on stderr. Useful for local dev without Cosmos.
+
+**Reconcile:** mirrors the AI Search ghost-doc cleanup. After the
+upsert pass, anything in Cosmos whose `canonical_id` isn't in the
+just-written set is deleted — keeps the map in lock-step with the
+clusters L2 actually elected this run.
+
+**Reading from L3 (preview):**
+
+```python
+import canonical_map
+doc = canonical_map.read_canonical("governed-mcp__financeCustomerCreate")
+# doc["members"] is the list of duplicates, with one is_canonical=True.
+```
+

@@ -11,6 +11,7 @@ import fingerprint as fp
 import mcp_source
 import openapi_source
 import search_client
+import canonical_map
 from cluster import cluster as run_cluster
 from elect import Candidate, elect
 
@@ -113,6 +114,12 @@ def run_ingest() -> dict[str, Any]:
     stale_ids = [d["id"] for d in existing if d["id"] not in desired_ids]
     deleted = search_client.delete_documents(stale_ids)
 
+    # 8. Persist the elections to Cosmos for L3 to read at runtime.
+    #    No-ops if COSMOS_ENDPOINT isn't configured — the rest of L2 still
+    #    works in environments that haven't wired Cosmos up yet.
+    cm_upsert = canonical_map.upsert_clusters(canonical_by_cluster)
+    cm_reconcile = canonical_map.reconcile(cm_upsert.get("active_canonical_ids") or [])
+
     return {
         "status": "ok",
         "tools": len(tools),
@@ -122,6 +129,12 @@ def run_ingest() -> dict[str, Any]:
         "stale_ids": stale_ids,
         "collisions_dropped": collisions,
         "elections": canonical_by_cluster,
+        "canonical_map": {
+            "written": cm_upsert.get("written", 0),
+            "deleted": cm_reconcile.get("deleted", 0),
+            "disabled": cm_upsert.get("disabled", True),
+            "failures": (cm_upsert.get("failures") or []) + (cm_reconcile.get("failures") or []),
+        },
     }
 
 
