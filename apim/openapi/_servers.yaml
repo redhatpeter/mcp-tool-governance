@@ -1,0 +1,14 @@
+# MCP server manifest
+#
+# Maps OpenAPI spec filename stem (under apim/openapi/) → MCP server name
+# as configured on the APIM gateway. Used by:
+#   - apps/dup-resolver/openapi_source.py  (reads specs into ToolDescriptors)
+#   - apps/dup-resolver/check_pr.py        (rename detection per server)
+#   - apps/dup-resolver/ingest.py          (per-server reconciliation)
+#
+# To add a new MCP server: drop a new <stem>.json under apim/openapi/ and
+# add a row below. No code changes required.
+
+servers:
+  finance-governed: governed-mcp
+  finance-messy: messy-mcp

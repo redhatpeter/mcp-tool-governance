@@ -21,6 +21,7 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ ARCHITECTURE.md §14 backfilled with implementation-drift callout
 - ✅ Top-3 nearest neighbors as collapsible `<details>` per non-OK row
 - ✅ Threshold sweep table per non-OK row (0.85 / 0.88 / 0.92 / 0.95 + current)
+- ✅ Spec-source manifest (`apim/openapi/_servers.yaml`) replaces hard-coded `SERVER_BY_FILE`
 
 ## P0 — operational gaps that will bite us next demo
 
@@ -80,7 +81,8 @@ they surface._
   threshold per organization" feature.
 
 - [ ] **Spec source plurality**
-  Today `openapi_source.SERVER_BY_FILE` is a hard-coded mapping of
-  filename → server name. Generalize to read a manifest
-  (`apim/openapi/_servers.yaml`) so adding a new MCP server doesn't
-  require a code change.
+  Today this is **partially done** — see
+  `apim/openapi/_servers.yaml`. The remaining piece is hooking the
+  manifest into `tools-cli/lint.py` so unknown stems either error
+  loudly or are explicitly listed as `unmanaged: true`. Until then,
+  unknown stems are silently skipped by the resolver.

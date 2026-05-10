@@ -240,3 +240,28 @@ signal:
 Layers 1+2 keep the index fresh; layer 3 lets reviewers know if both
 have failed and they shouldn't trust the score until someone re-runs
 `workflow_dispatch` on either.
+
+## Adding a new MCP server (spec-source manifest)
+
+The mapping from OpenAPI filename stem to APIM MCP server name lives in
+[`apim/openapi/_servers.yaml`](../../apim/openapi/_servers.yaml). Add a
+new server in two steps — no code changes:
+
+1. Drop the OpenAPI spec at `apim/openapi/<stem>.json` (must lint clean
+   under `tools-cli/lint.py`).
+2. Add one line under `servers:` in `_servers.yaml`:
+   ```yaml
+   servers:
+     finance-governed: governed-mcp
+     finance-messy:    messy-mcp
+     hr-governed:      hr-mcp        # ← new
+   ```
+
+The next push to `main` triggers `ingest-on-merge` which embeds the new
+server's tools and reconciles the index. Stems that aren't listed in the
+manifest are intentionally **skipped** (not auto-discovered) so renaming
+a file doesn't silently change the indexed corpus.
+
+If the manifest is missing or PyYAML is unavailable (e.g. early-stage
+tests), the loader falls back to a built-in default that matches this
+repo's two stems. Production deployments should always author the file.
