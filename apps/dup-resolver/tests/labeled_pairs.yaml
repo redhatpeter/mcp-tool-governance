@@ -408,3 +408,349 @@ pairs:
     b: { server: brave-search, name: brave_web_search,
          description: "Perform a web search using the Brave Search API.",
          required: [query] }
+
+  # =====================================================================
+  # 2026-05-10 expansion: targeting 80-pair total. Pulled from canonical
+  # modelcontextprotocol/servers + commonly-referenced third-party MCP
+  # servers (linear, notion, jira, gitlab, dropbox, sentry, kubernetes,
+  # docker, redis, mysql, etc.). Tool names + descriptions paraphrased
+  # from published schemas. Server names are illustrative.
+  # =====================================================================
+
+  # ---- Cross-server duplicates (more vendor pairs) ----
+  - label: duplicate
+    category: cross_server_dup
+    notes: "GitHub create_pull_request vs GitLab create_merge_request"
+    a: { server: github, name: create_pull_request,
+         description: "Open a new pull request on a GitHub repository.",
+         required: [owner, repo, title, head, base] }
+    b: { server: gitlab, name: create_merge_request,
+         description: "Open a new merge request on a GitLab project.",
+         required: [project_id, source_branch, target_branch, title] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "GitHub get_file_contents vs GitLab get_file_contents"
+    a: { server: github, name: get_file_contents,
+         description: "Get the contents of a file from a GitHub repository.",
+         required: [owner, repo, path] }
+    b: { server: gitlab, name: get_file_contents,
+         description: "Get the contents of a file from a GitLab project.",
+         required: [project_id, file_path, ref] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "Linear createIssue vs Jira create_issue"
+    a: { server: linear, name: createIssue,
+         description: "Create a new issue in a Linear team.",
+         required: [teamId, title] }
+    b: { server: jira, name: create_issue,
+         description: "Create a new issue in a Jira project.",
+         required: [project_key, summary, issue_type] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "Notion create_page vs Confluence create_page"
+    a: { server: notion, name: create_page,
+         description: "Create a new page in Notion.",
+         required: [parent, properties] }
+    b: { server: confluence, name: create_page,
+         description: "Create a new page in a Confluence space.",
+         required: [space_key, title, body] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "Dropbox upload vs gdrive create_file"
+    a: { server: dropbox, name: upload_file,
+         description: "Upload a file to Dropbox.",
+         required: [path, contents] }
+    b: { server: gdrive, name: gdrive_create_file,
+         description: "Upload and create a new file in Google Drive.",
+         required: [name, contents] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "MySQL query vs Postgres query — both read-only SQL execution"
+    a: { server: mysql, name: mysql_query,
+         description: "Run a SELECT query against the connected MySQL database.",
+         required: [sql] }
+    b: { server: postgres, name: query,
+         description: "Run a read-only SQL query against the connected PostgreSQL database.",
+         required: [sql] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "Redis get vs Memcached get — same KV intent"
+    a: { server: redis, name: redis_get,
+         description: "Get the value of a key from Redis.",
+         required: [key] }
+    b: { server: memcached, name: memcached_get,
+         description: "Get the value of a key from the Memcached cluster.",
+         required: [key] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "AWS S3 get_object vs gcs read_object"
+    a: { server: aws-s3, name: s3_get_object,
+         description: "Download an object from an S3 bucket.",
+         required: [bucket, key] }
+    b: { server: gcs, name: gcs_read_object,
+         description: "Read the contents of an object from a Google Cloud Storage bucket.",
+         required: [bucket, name] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "Kubernetes apply_manifest vs Helm install"
+    a: { server: kubernetes, name: apply_manifest,
+         description: "Apply a Kubernetes YAML manifest to the cluster.",
+         required: [manifest] }
+    b: { server: helm, name: helm_install,
+         description: "Install a Helm chart into the cluster, applying manifests.",
+         required: [release_name, chart] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "Sentry list_issues vs Rollbar list_items — error tracker dups"
+    a: { server: sentry, name: list_issues,
+         description: "List issues from a Sentry project.",
+         required: [organization_slug, project_slug] }
+    b: { server: rollbar, name: list_items,
+         description: "List error items from a Rollbar project.",
+         required: [project_id] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "Stripe create_customer vs Square create_customer"
+    a: { server: stripe, name: create_customer,
+         description: "Create a new customer in Stripe.",
+         required: [email] }
+    b: { server: square, name: create_customer,
+         description: "Create a new customer in Square.",
+         required: [email_address] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "playwright.goto vs puppeteer.navigate — same intent, different browser automation lib"
+    a: { server: playwright, name: playwright_goto,
+         description: "Navigate the Playwright browser to a URL.",
+         required: [url] }
+    b: { server: puppeteer, name: puppeteer_navigate,
+         description: "Navigate the browser to a URL and return the rendered page.",
+         required: [url] }
+
+  # ---- Real-world novels: same domain, different entity ----
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "GitHub repos vs branches"
+    a: { server: github, name: list_repositories,
+         description: "List repositories owned by a user or organization.",
+         required: [owner] }
+    b: { server: github, name: list_branches,
+         description: "List branches in a GitHub repository.",
+         required: [owner, repo] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "Jira issue vs Jira project"
+    a: { server: jira, name: get_issue,
+         description: "Get the details of a Jira issue.",
+         required: [issue_key] }
+    b: { server: jira, name: get_project,
+         description: "Get the details of a Jira project.",
+         required: [project_key] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "Kubernetes pods vs services"
+    a: { server: kubernetes, name: list_pods,
+         description: "List pods in a Kubernetes namespace.",
+         required: [namespace] }
+    b: { server: kubernetes, name: list_services,
+         description: "List services in a Kubernetes namespace.",
+         required: [namespace] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "Stripe customer vs subscription"
+    a: { server: stripe, name: get_customer,
+         description: "Retrieve a customer object by id from Stripe.",
+         required: [customer_id] }
+    b: { server: stripe, name: get_subscription,
+         description: "Retrieve a subscription object by id from Stripe.",
+         required: [subscription_id] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "Notion database vs page"
+    a: { server: notion, name: query_database,
+         description: "Query a Notion database with filters and sorts.",
+         required: [database_id] }
+    b: { server: notion, name: get_page,
+         description: "Retrieve a Notion page by id.",
+         required: [page_id] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "Sentry issues vs events"
+    a: { server: sentry, name: list_issues,
+         description: "List issues from a Sentry project.",
+         required: [organization_slug, project_slug] }
+    b: { server: sentry, name: list_events,
+         description: "List recent events for a Sentry project.",
+         required: [organization_slug, project_slug] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "Docker containers vs images"
+    a: { server: docker, name: list_containers,
+         description: "List Docker containers on the host." }
+    b: { server: docker, name: list_images,
+         description: "List Docker images cached on the host." }
+
+  # ---- Real-world novels: same entity, different action ----
+  - label: novel
+    category: same_entity_diff_action
+    notes: "GitHub PR create vs merge"
+    a: { server: github, name: create_pull_request,
+         description: "Open a new pull request on a GitHub repository.",
+         required: [owner, repo, title, head, base] }
+    b: { server: github, name: merge_pull_request,
+         description: "Merge an open pull request.",
+         required: [owner, repo, pull_number] }
+
+  - label: novel
+    category: same_entity_diff_action
+    notes: "Postgres read query vs write query (mutation)"
+    a: { server: postgres, name: query,
+         description: "Run a read-only SQL query against the connected PostgreSQL database.",
+         required: [sql] }
+    b: { server: postgres, name: execute,
+         description: "Execute a write SQL statement (INSERT/UPDATE/DELETE) on the database.",
+         required: [sql] }
+
+  - label: novel
+    category: same_entity_diff_action
+    notes: "Kubernetes pod get vs delete"
+    a: { server: kubernetes, name: get_pod,
+         description: "Get details of a Kubernetes pod by name.",
+         required: [namespace, name] }
+    b: { server: kubernetes, name: delete_pod,
+         description: "Delete a Kubernetes pod by name.",
+         required: [namespace, name] }
+
+  - label: novel
+    category: same_entity_diff_action
+    notes: "Stripe subscription create vs cancel"
+    a: { server: stripe, name: create_subscription,
+         description: "Create a new Stripe subscription for a customer.",
+         required: [customer_id, price_id] }
+    b: { server: stripe, name: cancel_subscription,
+         description: "Cancel an existing Stripe subscription.",
+         required: [subscription_id] }
+
+  - label: novel
+    category: same_entity_diff_action
+    notes: "Slack channel create vs archive"
+    a: { server: slack, name: slack_create_channel,
+         description: "Create a new Slack channel.",
+         required: [name] }
+    b: { server: slack, name: slack_archive_channel,
+         description: "Archive a Slack channel.",
+         required: [channel_id] }
+
+  - label: novel
+    category: same_entity_diff_action
+    notes: "memory: create entities vs delete entities"
+    a: { server: memory, name: create_entities,
+         description: "Create new entities in the knowledge graph.",
+         required: [entities] }
+    b: { server: memory, name: delete_entities,
+         description: "Delete entities from the knowledge graph by name.",
+         required: [entityNames] }
+
+  # ---- Real-world generic-name pairs ----
+  - label: duplicate
+    category: generic_name
+    notes: "filesystem 'search' is actually a file search"
+    a: { server: filesystem, name: search,
+         description: "Search for files matching a pattern under a path." }
+    b: { server: filesystem, name: search_files,
+         description: "Recursively search for files matching a glob pattern.",
+         required: [path, pattern] }
+
+  - label: novel
+    category: generic_name
+    notes: "Two different 'list' tools — one lists files, one lists Slack channels"
+    a: { server: filesystem, name: list,
+         description: "List the contents of a directory.",
+         required: [path] }
+    b: { server: slack, name: list,
+         description: "List public channels in a Slack workspace." }
+
+  - label: novel
+    category: generic_name
+    notes: "Two different 'get' tools — one is HTTP, one is k8s"
+    a: { server: fetch, name: get,
+         description: "Fetch a URL via HTTP GET.",
+         required: [url] }
+    b: { server: kubernetes, name: get,
+         description: "Get a Kubernetes resource by kind and name.",
+         required: [kind, name] }
+
+  # ---- More real-world unrelated pairs ----
+  - label: novel
+    category: unrelated
+    a: { server: kubernetes, name: list_pods,
+         description: "List pods in a Kubernetes namespace.",
+         required: [namespace] }
+    b: { server: notion, name: query_database,
+         description: "Query a Notion database with filters and sorts.",
+         required: [database_id] }
+
+  - label: novel
+    category: unrelated
+    a: { server: sentry, name: list_issues,
+         description: "List issues from a Sentry project.",
+         required: [organization_slug, project_slug] }
+    b: { server: gdrive, name: gdrive_read_file,
+         description: "Read the contents of a file from Google Drive by file id.",
+         required: [file_id] }
+
+  - label: novel
+    category: unrelated
+    a: { server: stripe, name: create_customer,
+         description: "Create a new customer in Stripe.",
+         required: [email] }
+    b: { server: kubernetes, name: list_pods,
+         description: "List pods in a Kubernetes namespace.",
+         required: [namespace] }
+
+  - label: novel
+    category: unrelated
+    a: { server: redis, name: redis_get,
+         description: "Get the value of a key from Redis.",
+         required: [key] }
+    b: { server: github, name: list_branches,
+         description: "List branches in a GitHub repository.",
+         required: [owner, repo] }
+
+  # ---- Edge case: cross-vendor "same name, different entity model" ----
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "GitHub user vs Linear user — both are 'users' but distinct entity models"
+    a: { server: github, name: get_user,
+         description: "Get the public profile of a GitHub user by login.",
+         required: [username] }
+    b: { server: linear, name: getViewer,
+         description: "Get the currently authenticated Linear user.",
+         required: [] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "search across two unrelated corpora"
+    a: { server: github, name: search_code,
+         description: "Search for code matching a query across GitHub.",
+         required: [q] }
+    b: { server: confluence, name: search_pages,
+         description: "Search Confluence pages matching a query string.",
+         required: [cql] }

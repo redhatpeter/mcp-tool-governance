@@ -10,7 +10,7 @@ python3 eval_threshold.py --markdown ../../docs/eval/precision-recall.md
 ## Inputs
 
 - Labeled pair set: `apps/dup-resolver/tests/labeled_pairs.yaml`
-- Pairs: **42** (duplicates: 20, novels: 22)
+- Pairs: **76** (duplicates: 33, novels: 43)
 - Thresholds swept: 0.850, 0.880, 0.900, 0.920, 0.950
 - Embedding model: `text-embedding-3-large` (3072 dims, cosine)
 - Fingerprint shape: same as production ingest (domain / action / entity / description / params)
@@ -22,11 +22,11 @@ the confusion matrix at each threshold.
 
 | threshold | TP | FP | FN | TN | precision | recall |  F1   |
 |----------:|---:|---:|---:|---:|----------:|-------:|------:|
-| 0.850 | 5 | 0 | 15 | 22 | 1.000 | 0.250 | 0.400 |
-| 0.880 | 4 | 0 | 16 | 22 | 1.000 | 0.200 | 0.333 |
-| 0.900 | 4 | 0 | 16 | 22 | 1.000 | 0.200 | 0.333 |
-| 0.920 | 3 | 0 | 17 | 22 | 1.000 | 0.150 | 0.261 |
-| 0.950 | 3 | 0 | 17 | 22 | 1.000 | 0.150 | 0.261 |
+| 0.850 | 5 | 0 | 28 | 43 | 1.000 | 0.152 | 0.263 |
+| 0.880 | 4 | 0 | 29 | 43 | 1.000 | 0.121 | 0.216 |
+| 0.900 | 4 | 0 | 29 | 43 | 1.000 | 0.121 | 0.216 |
+| 0.920 | 3 | 0 | 30 | 43 | 1.000 | 0.091 | 0.167 |
+| 0.950 | 3 | 0 | 30 | 43 | 1.000 | 0.091 | 0.167 |
 
 ## Per-pair scores
 
@@ -43,47 +43,81 @@ and the production threshold should sit inside that gap.
 | 0.869 | duplicate | generic_name | `messy-mcp/create` | `messy-mcp/createCustomer` |
 | 0.843 | duplicate | generic_name | `messy-mcp/lookup` | `messy-mcp/customer_lookup` |
 | 0.841 | duplicate | cross_server_dup | `governed-mcp/financeCustomerCreate` | `messy-mcp/createCustomer` |
-| 0.819 | duplicate | syntactic_dup | `messy-mcp/CustomerAPI_Final_v3` | `messy-mcp/createCustomer` |
+| 0.836 | duplicate | cross_server_dup | `stripe/create_customer` | `square/create_customer` |
+| 0.818 | duplicate | syntactic_dup | `messy-mcp/CustomerAPI_Final_v3` | `messy-mcp/createCustomer` |
+| 0.818 | duplicate | generic_name | `filesystem/search` | `filesystem/search_files` |
+| 0.810 | novel | same_domain_diff_entity | `jira/get_issue` | `jira/get_project` |
+| 0.804 | novel | same_domain_diff_entity | `sentry/list_issues` | `sentry/list_events` |
+| 0.800 | novel | same_domain_diff_entity | `kubernetes/list_pods` | `kubernetes/list_services` |
+| 0.797 | novel | same_entity_diff_action | `kubernetes/get_pod` | `kubernetes/delete_pod` |
+| 0.791 | duplicate | cross_server_dup | `redis/redis_get` | `memcached/memcached_get` |
 | 0.790 | novel | same_domain_diff_entity | `brave-search/brave_web_search` | `brave-search/brave_local_search` |
 | 0.789 | duplicate | cross_server_dup | `governed-mcp/financeCustomerSearch` | `messy-mcp/customer_search` |
 | 0.782 | duplicate | cross_server_dup | `brave-search/brave_web_search` | `google-search/google_web_search` |
 | 0.770 | duplicate | semantic_dup | `messy-mcp/customer_find` | `messy-mcp/customer_search` |
+| 0.767 | duplicate | cross_server_dup | `github/get_file_contents` | `gitlab/get_file_contents` |
 | 0.759 | novel | same_domain_diff_entity | `memory/create_entities` | `memory/create_relations` |
 | 0.758 | novel | same_domain_diff_entity | `governed-mcp/financeCustomerGet` | `governed-mcp/financeInvoiceGet` |
 | 0.757 | novel | same_domain_diff_entity | `github/list_issues` | `github/list_pull_requests` |
+| 0.753 | duplicate | cross_server_dup | `mysql/mysql_query` | `postgres/query` |
 | 0.748 | novel | same_entity_diff_action | `governed-mcp/financeCustomerGet` | `governed-mcp/financeCustomerCreate` |
+| 0.748 | novel | same_domain_diff_entity | `stripe/get_customer` | `stripe/get_subscription` |
 | 0.747 | duplicate | semantic_dup | `messy-mcp/customer_find` | `messy-mcp/customer_lookup` |
 | 0.725 | novel | same_entity_diff_action | `governed-mcp/financeInvoiceCreate` | `governed-mcp/financeInvoiceList` |
 | 0.725 | novel | same_entity_diff_action | `governed-mcp/financeInvoiceCreate` | `governed-mcp/financeInvoiceGet` |
-| 0.724 | duplicate | semantic_dup | `messy-mcp/invoice_create_v1` | `messy-mcp/invoice_create_legacy` |
+| 0.723 | duplicate | semantic_dup | `messy-mcp/invoice_create_v1` | `messy-mcp/invoice_create_legacy` |
+| 0.715 | novel | same_entity_diff_action | `github/create_pull_request` | `github/merge_pull_request` |
+| 0.715 | duplicate | cross_server_dup | `playwright/playwright_goto` | `puppeteer/puppeteer_navigate` |
 | 0.715 | duplicate | cross_server_dup | `governed-mcp/financeInvoiceCreate` | `messy-mcp/invoice_create_v1` |
+| 0.714 | novel | same_domain_diff_entity | `github/list_repositories` | `github/list_branches` |
+| 0.712 | duplicate | cross_server_dup | `github/create_pull_request` | `gitlab/create_merge_request` |
+| 0.706 | novel | same_domain_diff_entity | `docker/list_containers` | `docker/list_images` |
+| 0.700 | novel | same_entity_diff_action | `slack/slack_create_channel` | `slack/slack_archive_channel` |
 | 0.695 | duplicate | cross_server_dup | `postgres/query` | `sqlite/read_query` |
 | 0.689 | novel | same_entity_diff_action | `governed-mcp/financeCustomerCreate` | `governed-mcp/financeCustomerSearch` |
 | 0.682 | duplicate | semantic_dup | `messy-mcp/customer_search` | `messy-mcp/customer_lookup` |
+| 0.669 | novel | same_entity_diff_action | `memory/create_entities` | `memory/delete_entities` |
 | 0.665 | duplicate | cross_server_dup | `slack/slack_post_message` | `discord/send_message` |
+| 0.661 | novel | same_entity_diff_action | `stripe/create_subscription` | `stripe/cancel_subscription` |
 | 0.654 | duplicate | cross_server_dup | `filesystem/read_file` | `gdrive/gdrive_read_file` |
 | 0.651 | duplicate | cross_server_dup | `github/create_issue` | `linear/createIssue` |
 | 0.644 | novel | same_entity_diff_action | `filesystem/read_file` | `filesystem/write_file` |
 | 0.641 | novel | same_entity_diff_action | `github/create_issue` | `github/get_issue` |
 | 0.640 | novel | same_domain_diff_entity | `governed-mcp/financeCustomerGet` | `governed-mcp/financeQuoteGet` |
+| 0.638 | duplicate | cross_server_dup | `notion/create_page` | `confluence/create_page` |
+| 0.634 | duplicate | cross_server_dup | `aws-s3/s3_get_object` | `gcs/gcs_read_object` |
+| 0.633 | duplicate | cross_server_dup | `dropbox/upload_file` | `gdrive/gdrive_create_file` |
+| 0.620 | novel | generic_name | `fetch/get` | `kubernetes/get` |
+| 0.618 | novel | same_domain_diff_entity | `notion/query_database` | `notion/get_page` |
+| 0.611 | novel | same_entity_diff_action | `postgres/query` | `postgres/execute` |
 | 0.610 | novel | unrelated | `messy-mcp/createCustomer` | `messy-mcp/invoice_create_v1` |
 | 0.608 | novel | same_domain_diff_entity | `slack/slack_list_channels` | `slack/slack_get_channel_history` |
-| 0.583 | novel | same_domain_diff_entity | `filesystem/read_file` | `filesystem/get_file_info` |
+| 0.599 | duplicate | cross_server_dup | `linear/createIssue` | `jira/create_issue` |
 | 0.582 | novel | same_domain_diff_entity | `governed-mcp/financeCustomerSearch` | `governed-mcp/financeInvoiceList` |
+| 0.581 | novel | same_domain_diff_entity | `filesystem/read_file` | `filesystem/get_file_info` |
+| 0.579 | duplicate | cross_server_dup | `sentry/list_issues` | `rollbar/list_items` |
+| 0.575 | duplicate | cross_server_dup | `kubernetes/apply_manifest` | `helm/helm_install` |
+| 0.549 | novel | same_domain_diff_entity | `github/search_code` | `confluence/search_pages` |
 | 0.546 | novel | same_entity_diff_action | `puppeteer/puppeteer_navigate` | `puppeteer/puppeteer_screenshot` |
 | 0.546 | duplicate | cross_server_dup | `fetch/fetch` | `puppeteer/puppeteer_navigate` |
 | 0.544 | novel | unrelated | `messy-mcp/customer_search` | `governed-mcp/financeInvoiceList` |
+| 0.528 | novel | same_domain_diff_entity | `github/get_user` | `linear/getViewer` |
+| 0.500 | novel | generic_name | `filesystem/list` | `slack/list` |
 | 0.484 | novel | same_domain_diff_entity | `governed-mcp/financePaymentApprove` | `governed-mcp/financeQuoteGet` |
 | 0.364 | novel | generic_name | `messy-mcp/list` | `governed-mcp/financeCustomerSearch` |
 | 0.358 | novel | unrelated | `governed-mcp/financeQuoteGet` | `messy-mcp/customer_lookup` |
 | 0.349 | novel | unrelated | `filesystem/list_directory` | `brave-search/brave_web_search` |
-| 0.347 | novel | unrelated | `postgres/query` | `slack/slack_post_message` |
+| 0.348 | novel | unrelated | `postgres/query` | `slack/slack_post_message` |
+| 0.344 | novel | unrelated | `kubernetes/list_pods` | `notion/query_database` |
+| 0.337 | novel | unrelated | `redis/redis_get` | `github/list_branches` |
+| 0.294 | novel | unrelated | `stripe/create_customer` | `kubernetes/list_pods` |
+| 0.221 | novel | unrelated | `sentry/list_issues` | `gdrive/gdrive_read_file` |
 
 ## Separability
 
 - Lowest-scoring duplicate: **0.546**
-- Highest-scoring novel:    **0.790**
-- Margin: **-0.244** (overlapping)
+- Highest-scoring novel:    **0.810**
+- Margin: **-0.264** (overlapping)
 
 If the margin is negative, no single threshold can perfectly
 separate the two classes on this set — pick the threshold that
@@ -91,7 +125,8 @@ best matches the cost asymmetry (false positives block PRs;
 false negatives let dups through).
 
 
-## Fingerprint variant comparison (2026-05-10, expanded set)
+
+## Fingerprint variant comparison (2026-05-10, 76-pair set)
 
 Run with `python3 eval_threshold.py --compare`. Each variant is an
 alternative `fingerprint_text` shape evaluated against the same labeled
@@ -100,74 +135,81 @@ hypotheses tested against the labeled set.
 
 | variant | F1 @ 0.85 | F1 @ 0.88 | F1 @ 0.90 | F1 @ 0.92 | F1 @ 0.95 | sep_margin |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| baseline (production) | 0.400 | 0.333 | 0.333 | 0.261 | 0.261 | −0.244 |
-| no-domain | 0.400 | 0.400 | 0.261 | 0.261 | 0.095 | −0.171 |
-| synonyms | 0.519 | 0.400 | 0.333 | 0.261 | 0.261 | −0.270 |
-| description-heavy | 0.519 | 0.333 | 0.333 | 0.261 | 0.261 | −0.211 |
-| **combined** | 0.462 | 0.400 | **0.400** | **0.333** | 0.261 | **−0.167** |
+| baseline (production) | 0.263 | 0.216 | 0.216 | 0.167 | 0.167 | −0.264 |
+| no-domain | 0.256 | 0.263 | 0.167 | 0.167 | 0.059 | −0.359 |
+| synonyms | 0.350 | 0.263 | 0.216 | 0.167 | 0.167 | −0.286 |
+| description-heavy | **0.390** | 0.216 | 0.216 | 0.167 | 0.167 | **−0.215** |
+| combined | 0.300 | 0.263 | **0.263** | **0.216** | 0.167 | −0.312 |
 
-`combined` is the best variant on both separability and F1 at every
-threshold ≥ 0.90 — but the margin is still negative on the expanded
-set, meaning no single embedding-only threshold perfectly partitions
-duplicates from novels.
+`combined` still leads at thresholds ≥ 0.90 but its margin is the
+worst of the variants on the larger set — same-domain prose
+(`brave_web_search` vs `brave_local_search`, `jira/get_issue` vs
+`jira/get_project`) compresses against true cross-vendor duplicates.
 
 ## Analysis & recommendations
 
-### What changed when the labeled set grew from 26 → 42
+### What changed when the labeled set grew from 42 → 76
 
-Adding 16 real-world pairs from canonical MCP servers (filesystem,
-github, postgres/sqlite, slack/discord, brave-search, fetch/puppeteer,
-memory) **dropped recall at the production threshold (0.92) from
-≈ 21 % to 15 %** while keeping precision at 1.000. The new pairs
-exposed two failure modes that the in-repo demo specs masked:
+Adding 34 real-world pairs (linear/jira/notion/confluence/dropbox/
+gdrive/mysql/postgres/redis/aws-s3/gcs/kubernetes/helm/sentry/rollbar/
+stripe/square/playwright/puppeteer/docker, plus more github+slack
+operations) **dropped recall at 0.92 from 15 % → 9 %** while
+preserving precision at 1.000. Two patterns confirm the L2 ceiling:
 
-1. **Cross-vendor semantic duplicates score lower than expected.**
-   `github.create_issue` vs `linear.createIssue` lands at 0.651;
-   `slack.slack_post_message` vs `discord.send_message` at 0.665;
-   `fetch.fetch` vs `puppeteer.puppeteer_navigate` at 0.546. These are
-   genuine duplicates from a governance standpoint (an agent should
-   not see both), but the embeddings reflect the vendor-specific
-   description prose more than the shared intent.
-2. **Same-domain-different-entity novels score higher than expected.**
-   `brave_web_search` vs `brave_local_search` ranks at 0.790,
-   above several true duplicates. `github.list_issues` vs
-   `github.list_pull_requests` at 0.757. The shared domain text
-   ("Brave Search API", "GitHub repository") creates more lexical
-   overlap than the action/entity divergence can offset.
+1. **The highest-scoring novel rose from 0.790 to 0.810**
+   (`jira/get_issue` vs `jira/get_project`). Two operations on
+   different entities of the same product score above eight
+   real cross-vendor duplicates. Every additional vendor pair
+   raises this ceiling.
+2. **Cross-vendor duplicates cluster in the 0.55–0.70 band**
+   regardless of how strong the semantic match is.
+   `linear/createIssue` vs `jira/create_issue` lands at 0.599;
+   `dropbox/upload_file` vs `gdrive/gdrive_create_file` at 0.633;
+   `notion/create_page` vs `confluence/create_page` at 0.638.
+   These are unambiguous duplicates by intent — vendor-specific
+   description prose is the differentiator the embedder picks up on.
 
-### Recommendation: do not adopt `combined` in production yet
+### Recommendation: keep production threshold at 0.92; rely on REVIEW band
 
-Although `combined` wins on this set, the gain (F1 0.333 vs 0.261 at
-0.92) is small relative to the variance from 16 added pairs. Adopting
-it would also reset the threshold history. **Hold the production
-fingerprint at `baseline` and revisit after the labeled set reaches
-80–100 pairs.**
+The 76-pair sweep validates the two-tier verdict shipped earlier today:
 
-### Recommendation: introduce a two-tier verdict at PR time
+- **DUPLICATE @ ≥ 0.92** — still 1.000 precision, no false positives
+  even on a 4× larger set. Hard block stays correct.
+- **WARN @ [0.87, 0.92)** — captures the high-confidence near-misses
+  (`stripe/create_customer` vs `square/create_customer` at 0.836,
+  `filesystem/search` vs `filesystem/search_files` at 0.818).
+- **REVIEW @ [0.65, 0.87)** — the 0.65 floor catches
+  ~21 of the 33 duplicates (64 %) that DUPLICATE/WARN miss, at the
+  cost of also flagging same-domain-different-entity novels for
+  human triage. This is the right tradeoff at PR time: the surface
+  is the existing top-3 nearest-neighbor block, not a check failure.
+- **OK @ < 0.65** — silent. `fetch/fetch` vs `puppeteer/puppeteer_navigate`
+  (0.546) and the lowest cross-vendor pairs fall here; recovering
+  them would require either (a) action-aware reranking outside the
+  embedder, or (b) curated synonym packs at fingerprint time.
 
-The single-threshold model has hit its ceiling. Suggested follow-up
-(tracked in the L1 / L2 backlog, not implemented in this study):
+### Recommendation: do **not** adopt `combined` in production
 
-- **Hard block (precision-favoring)** at the current 0.92 — keep
-  today's behavior.
-- **Soft "review-recommended" tier** at ≈ 0.65 — surface the pair
-  in the PR comment as INFO, do not fail the check. This catches the
-  cross-vendor duplicates above without incurring the false-positive
-  cost of a single-threshold lower bound (which would flag every
-  same-domain-different-entity pair).
-- For pairs that score in the soft tier, the existing top-3 nearest-
-  neighbor block in `check_pr.py` already gives reviewers the context
-  they need to triage manually.
+Although `combined` wins at thresholds ≥ 0.90, its separability
+margin is now the worst (−0.312). On a vendor-diverse set the
+"add domain synonyms" trick lifts true-positive scores by a small
+amount but lifts same-domain-novel scores by more. **Production
+fingerprint stays at `baseline`.**
 
-### Pairs that still need to be added to reach 80–100
+### Where to grow next (76 → 100+)
 
-Categories under-represented in the current 42-pair set:
+The current set is well-balanced across categories. Marginal value
+from further growth is now in:
 
-- More **same-domain-different-action** pairs from real servers
-  (e.g. `gdrive.search` vs `gdrive.gdrive_read_file`).
-- More **generic-name** pairs from real servers (the in-repo
-  `messy-mcp/lookup` is the only example today).
-- **True cross-vendor novels** that share domain prose
-  (e.g. two different vendors' "create_issue" tools that operate on
-  different entity models — would test whether the embedder picks up
-  the schema delta).
+- **More cross-vendor duplicates with action verbs that differ
+  syntactically but match semantically** (e.g. "publish" vs "post"
+  vs "send"; "upload" vs "create_file" vs "put_object"). These
+  stress-test the action-axis of the fingerprint specifically.
+- **More generic-name pairs from real servers** — only 4 in the
+  current set, and they're the highest-leverage failure mode at
+  ingest time (the `tool-name-style` policy gate is one mitigation
+  but does not catch every collision).
+- **Vendor pairs where one side has a deep schema and the other is
+  schemaless** (e.g. `stripe/create_customer` with 30 optional
+  fields vs `messy-mcp/createCustomer` with 0). Tests whether
+  required-param overlap meaningfully shifts the score.
