@@ -34,21 +34,13 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ `daily-ingest` end-to-end smoke (run [25631367436](https://github.com/redhatpeter/mcp-tool-governance/actions/runs/25631367436))
 - ✅ L3 policies deployed to APIM (`governed-mcp`, `messy-mcp`) via `apim/deploy/deploy_l3_policies.py`
 - ✅ Wire-name resolver (`apim_wirenames`) — ingest reads `properties.mcpTools[].{name, operationId}` from APIM as the source of truth; canonical_map keys now match runtime `tools/list` names. Smoke on `messy-mcp`: 3 dropped, 10 kept (`x-mcp-tools-filtered: 3`).
+- ✅ L3 E2E smoke green (commit `85c3c26`) — 6/6 assertions across both servers, including `governed-mcp` 500 root-caused to `cache-store-value` rejecting empty string (sentinel fix landed in `tools-list-filter.policy.xml`).
 
 ## P0 — operational gaps that will bite us next demo
 
 _All P0 items closed in this session._
 
 ## P1 — gaps that would improve operability
-
-- [ ] **Diagnose `governed-mcp` 500 on `tools/list`**
-  With the L3 policy *removed entirely*, `POST /governed-mcp/mcp` still
-  returns HTTP 500. Pre-existing in the API itself (backend or
-  MCP-typed wiring), unrelated to L3. Repro:
-  `curl -X POST .../governed-mcp/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`.
-  Trace via APIM `listDebugCredentials` → `listTrace`. Likely places to
-  look first: backend service URL, `mcp-server` policy, MI on the
-  source `finance-api-governed` API.
 
 - [ ] **CI: run `validate_policies.py` and `test_wirename_resolution.py` in a workflow**
   Both are checked in but only run locally. Add a `policy-tests` job
