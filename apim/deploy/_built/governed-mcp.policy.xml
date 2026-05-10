@@ -166,14 +166,23 @@
 
                 <cache-store-value
                     key="@("aliasdrop:" + "governed-mcp")"
-                    value="@((string)context.Variables["aliasDropCsv"])"
+                    value="@{
+                      // cache-store-value rejects empty strings ("The value
+                      // field is required.") and would 500 on any server
+                      // with no aliases. Persist a sentinel for the empty
+                      // case so the 60s cache still suppresses Cosmos.
+                      var v = (string)context.Variables["aliasDropCsv"];
+                      return string.IsNullOrEmpty(v) ? "__none__" : v;
+                    }"
                     duration="60" />
               </when>
             </choose>
 
             <set-variable name="droppedCount" value="@{
               var dropCsv = (string)context.Variables["aliasDropCsv"];
-              if (string.IsNullOrEmpty(dropCsv)) { return 0; }
+              // "__none__" is the sentinel written by cache-store-value
+              // when the real value would be empty (see above).
+              if (string.IsNullOrEmpty(dropCsv) || dropCsv == "__none__") { return 0; }
               var dropSet = new System.Collections.Generic.HashSet<string>(
                   dropCsv.Split(','), System.StringComparer.Ordinal);
 
