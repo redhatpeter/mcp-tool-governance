@@ -60,6 +60,11 @@ jobs:
           SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
           SEARCH_INDEX: ${{ secrets.SEARCH_INDEX }}
           SEARCH_ADMIN_KEY: ${{ secrets.SEARCH_ADMIN_KEY }}
+          # L3 canonical_map (optional). When unset the writer no-ops
+          # with a single stderr log line, so the workflow stays green
+          # even if Cosmos is unavailable.
+          COSMOS_ENDPOINT: ${{ vars.COSMOS_ENDPOINT }}
+          COSMOS_KEY: ${{ secrets.COSMOS_KEY }}
           MCP_SOURCE: openapi
           OPENAPI_SPEC_DIR: apim/openapi
         shell: bash
@@ -88,6 +93,7 @@ jobs:
               'deleted_stale': d.get('deleted_stale'),
               'stale_ids': d.get('stale_ids'),
               'collisions_dropped': d.get('collisions_dropped'),
+              'canonical_map': d.get('canonical_map'),
           }
           print(json.dumps(slim, indent=2))
           "

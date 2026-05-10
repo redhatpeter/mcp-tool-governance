@@ -29,6 +29,7 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ L3 step 1 — canonical_map writer (Cosmos `governance.mcp-canonical-map`)
 - ✅ L3 step 2 — `tools/list` filter policy + writer schema enrichment (primary, aliases)
 - ✅ L3 step 3 — `tools/call` rewrite for unified schema + Python validation harness
+- ✅ L3 step 4 — `COSMOS_ENDPOINT`/`COSMOS_KEY` wired into ingest CI
 
 ## P0 — operational gaps that will bite us next demo
 
@@ -91,9 +92,13 @@ they surface._
     queries against live Cosmos — 9/9 assertions pass on the demo data
     (3 alias resolutions, 1 already-canonical, 1 singleton, 1 unknown
     fail-open, plus 2 tools/list drop-set cases). **Not yet deployed.**
-  - [ ] **L3 step 4** — wire `COSMOS_ENDPOINT` into ingest workflows
-    (`ingest-on-merge`, `daily-ingest`) so production canonical_map
-    stays in sync without local runs.
+  - [x] **L3 step 4** — wire `COSMOS_ENDPOINT` + `COSMOS_KEY` into
+    `ingest-on-merge.yml` and `daily-ingest.yml`. Repo variable
+    `COSMOS_ENDPOINT` + repo secret `COSMOS_KEY`. Local auth was
+    re-enabled on `cosmoslab82658` for this (Azure Policy is `audit`
+    only on this account, so it sticks). Workflow summary now
+    surfaces the `canonical_map: {written, deleted, disabled,
+    failures}` block from ingest's run summary.
 
 - [ ] **Quantitative precision/recall — grow the labeled set**
   Scaffold complete: `apps/dup-resolver/tests/labeled_pairs.yaml` (26
