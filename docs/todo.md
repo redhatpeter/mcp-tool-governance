@@ -35,6 +35,7 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ L3 policies deployed to APIM (`governed-mcp`, `messy-mcp`) via `apim/deploy/deploy_l3_policies.py`
 - ✅ Wire-name resolver (`apim_wirenames`) — ingest reads `properties.mcpTools[].{name, operationId}` from APIM as the source of truth; canonical_map keys now match runtime `tools/list` names. Smoke on `messy-mcp`: 3 dropped, 10 kept (`x-mcp-tools-filtered: 3`).
 - ✅ L3 E2E smoke green (commit `85c3c26`) — 6/6 assertions across both servers, including `governed-mcp` 500 root-caused to `cache-store-value` rejecting empty string (sentinel fix landed in `tools-list-filter.policy.xml`).
+- ✅ CI gate (`.github/workflows/policy-tests.yml`, run `25637397605`) — `unit-tests` job runs `test_wirename_resolution.py` (3/3) and `policy-contract` job replays `validate_policies.py` against live Cosmos (8/8). Triggers on changes to `apps/dup-resolver/{canonical_map,openapi_source,apim_wirenames,ingest}.py`, `apim/policies/**`, `apim/deploy/**`, the workflow itself, and `workflow_dispatch`.
 
 ## P0 — operational gaps that will bite us next demo
 
@@ -42,14 +43,26 @@ _All P0 items closed in this session._
 
 ## P1 — gaps that would improve operability
 
-- [ ] **CI: run `validate_policies.py` and `test_wirename_resolution.py` in a workflow**
-  Both are checked in but only run locally. Add a `policy-tests` job
-  to `ingest-on-merge.yml` (or a new `tests.yml`) that runs after
-  ingest so canonical_map drift breaks the build.
+_All P1 items closed in this session._
+
 ## P2 — polish
 
-_All P2 items complete in this session. Track new polish items here as
-they surface._
+- [ ] **External blocker: APIM-MCP body forwarding (tracked at [Azure-Samples/AI-Gateway#315](https://github.com/Azure-Samples/AI-Gateway/issues/315))**
+  On `tools/call`, APIM-MCP forwards only the **last property's raw
+  scalar** as the backend HTTP body instead of constructing a JSON
+  object from `params.arguments`. Confirmed regression of the fix
+  shipped in [release-service-2026-03][rs26-03] (which replaced the
+  prior empty-body symptom from MS Q&A 4371821 / 5597117). Reproduces
+  with **all custom policies stripped** from the MCP server, so
+  governance is provably innocent. Demo impact: backend always
+  returns `json_invalid` on `tools/call`, but the L3 governance
+  layer's behavior is fully observable via `x-mcp-canonical-rewrite`
+  and `x-mcp-tools-filtered` response headers regardless. No
+  user-space workaround works post-fix (envelope is consumed upstream
+  of both MCP-server and source-API policy chains). Awaiting MS
+  triage on issue #315 / support ticket.
+
+[rs26-03]: https://github.com/Azure/API-Management/releases/tag/release-service-2026-03
 
 ## P3 — exploration / future work
 
