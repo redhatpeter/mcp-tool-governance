@@ -32,6 +32,8 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ L3 step 4 — `COSMOS_ENDPOINT`/`COSMOS_KEY` wired into ingest CI
 - ✅ OIDC migration for AOAI — forced by `CognitiveServices_LocalAuth_Modify` policy on `common-open-ai`. Workflows now use `azure/login@v2` + federated credential. AOAI key auth retired in CI.
 - ✅ `daily-ingest` end-to-end smoke (run [25631367436](https://github.com/redhatpeter/mcp-tool-governance/actions/runs/25631367436))
+- ✅ L3 policies deployed to APIM (`governed-mcp`, `messy-mcp`) via `apim/deploy/deploy_l3_policies.py`
+- ✅ Wire-name resolver (`apim_wirenames`) — ingest reads `properties.mcpTools[].{name, operationId}` from APIM as the source of truth; canonical_map keys now match runtime `tools/list` names. Smoke on `messy-mcp`: 3 dropped, 10 kept (`x-mcp-tools-filtered: 3`).
 
 ## P0 — operational gaps that will bite us next demo
 
@@ -39,16 +41,19 @@ _All P0 items closed in this session._
 
 ## P1 — gaps that would improve operability
 
-- [ ] **Deploy L3 policies to APIM**
-  Both policies are authored, locally schema-validated, but not
-  attached to any APIM API. Attach
-  `apim/policies/canonical-rewrite.policy.xml` (inbound) and
-  `apim/policies/tools-list-filter.policy.xml` (outbound) to the
-  `governed-mcp` and `messy-mcp` APIs. Replace placeholders
-  (`<tenant-id>`, `api://mcp-gateway`, `<server-name>`,
-  `cosmoslab82658`). Verify by calling each through the gateway and
-  inspecting `x-mcp-canonical-rewrite` / `x-mcp-tools-filtered`
-  response headers.
+- [ ] **Diagnose `governed-mcp` 500 on `tools/list`**
+  With the L3 policy *removed entirely*, `POST /governed-mcp/mcp` still
+  returns HTTP 500. Pre-existing in the API itself (backend or
+  MCP-typed wiring), unrelated to L3. Repro:
+  `curl -X POST .../governed-mcp/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`.
+  Trace via APIM `listDebugCredentials` → `listTrace`. Likely places to
+  look first: backend service URL, `mcp-server` policy, MI on the
+  source `finance-api-governed` API.
+
+- [ ] **CI: run `validate_policies.py` and `test_wirename_resolution.py` in a workflow**
+  Both are checked in but only run locally. Add a `policy-tests` job
+  to `ingest-on-merge.yml` (or a new `tests.yml`) that runs after
+  ingest so canonical_map drift breaks the build.
 ## P2 — polish
 
 _All P2 items complete in this session. Track new polish items here as
