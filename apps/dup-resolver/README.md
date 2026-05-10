@@ -278,6 +278,8 @@ cd apps/dup-resolver && source .venv/bin/activate
 python3 eval_threshold.py                                            # console
 python3 eval_threshold.py --markdown ../../docs/eval/precision-recall.md
 python3 eval_threshold.py --thresholds 0.85,0.88,0.90,0.92,0.95
+python3 eval_threshold.py --compare                                  # A/B all variants
+python3 eval_threshold.py --variant synonyms                         # single non-default
 ```
 
 The current pair set is small (~25 hand-curated pairs from the two demo
@@ -289,3 +291,24 @@ for the latest numbers; the headline is that L2 is high-precision
 (false positives are rare at any threshold ≥ 0.85) and lower-recall —
 which is exactly why L3 exists. Grow the labeled set whenever a real
 PR exposes a new failure mode.
+
+### Fingerprint variants (offline A/B)
+
+`eval_threshold.py --compare` runs the same labeled set through five
+fingerprint shapes (defined inline in the eval script — production
+`fingerprint.py` is **not** touched). Variants:
+
+| Variant             | What changes                                                         |
+|---------------------|----------------------------------------------------------------------|
+| `baseline`          | Production shape (control)                                           |
+| `no-domain`         | Drop the `domain:` line (test whether shared domain inflates novels) |
+| `synonyms`          | Map find/search/lookup→search, get/fetch/read→get, etc. in action+description |
+| `description-heavy` | Repeat the description as a second `intent:` line (semantic weight)  |
+| `combined`          | no-domain + synonyms + description-heavy stacked                     |
+
+Latest run on the 26-pair set ranked the variants by separability margin:
+`combined` (−0.028) > `synonyms` (−0.030) > `no-domain` (−0.073) > `baseline`
+(−0.076) > `description-heavy` (−0.094). Synonym normalization roughly
+halves the overlap. **No production change yet** — 26 pairs isn't enough
+evidence to invalidate the index and re-ingest. Revisit when the labeled
+set reaches ≈50 real-world pairs.

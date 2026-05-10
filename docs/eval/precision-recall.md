@@ -42,7 +42,7 @@ and the production threshold should sit inside that gap.
 | 0.907 | duplicate | semantic_dup | `messy-mcp/invoice_create_v1` | `messy-mcp/invoice_create_v2` |
 | 0.869 | duplicate | generic_name | `messy-mcp/create` | `messy-mcp/createCustomer` |
 | 0.843 | duplicate | generic_name | `messy-mcp/lookup` | `messy-mcp/customer_lookup` |
-| 0.840 | duplicate | cross_server_dup | `governed-mcp/financeCustomerCreate` | `messy-mcp/createCustomer` |
+| 0.841 | duplicate | cross_server_dup | `governed-mcp/financeCustomerCreate` | `messy-mcp/createCustomer` |
 | 0.819 | duplicate | syntactic_dup | `messy-mcp/CustomerAPI_Final_v3` | `messy-mcp/createCustomer` |
 | 0.789 | duplicate | cross_server_dup | `governed-mcp/financeCustomerSearch` | `messy-mcp/customer_search` |
 | 0.770 | duplicate | semantic_dup | `messy-mcp/customer_find` | `messy-mcp/customer_search` |
@@ -74,3 +74,33 @@ separate the two classes on this set — pick the threshold that
 best matches the cost asymmetry (false positives block PRs;
 false negatives let dups through).
 
+
+## Fingerprint variant A/B (offline)
+
+`eval_threshold.py --compare` runs the same labeled set through five
+fingerprint shapes. Production `fingerprint.py` is **not** modified — these
+variants live in the eval script only, so we can compare separability
+without invalidating the index.
+
+| Variant             | F1 @ 0.85 | F1 @ 0.88 | F1 @ 0.90 | F1 @ 0.92 | F1 @ 0.95 | Sep. margin |
+|---------------------|----------:|----------:|----------:|----------:|----------:|------------:|
+| `baseline`          |     0.526 |     0.444 |     0.444 |     0.353 |     0.353 |      −0.076 |
+| `no-domain`         |     0.526 |     0.526 |     0.353 |     0.353 |     0.133 |      −0.073 |
+| `synonyms`          |     0.667 |     0.526 |     0.444 |     0.353 |     0.353 |      −0.030 |
+| `description-heavy` |     0.667 |     0.444 |     0.444 |     0.353 |     0.353 |      −0.094 |
+| `combined`          |     0.526 |     0.526 |     0.526 |     0.444 |     0.353 |  **−0.028** |
+
+`combined` (no-domain + synonym verb normalization + description repeated
+as `intent:`) more than halves the separability overlap (−0.076 → −0.028)
+and lifts F1 at the production 0.92 threshold from 0.353 to 0.444. Margin
+is still negative, meaning **no single threshold perfectly separates the
+two classes** even with the best variant — the hardest semantic
+duplicates (e.g. `customer_search` vs `customer_lookup`) remain below
+the easiest hard negatives (e.g. `financeCustomerGet` vs
+`financeInvoiceGet`).
+
+**Decision:** keep production fingerprint as-is for now. 26 pairs is too
+narrow a basis to invalidate the index and re-ingest the corpus. Revisit
+when the labeled set reaches ≈50 real-world pairs — at that point the
+`combined` variant looks like the leading candidate, but the choice
+should be re-validated on whatever new evidence has accumulated.

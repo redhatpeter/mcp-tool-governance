@@ -28,7 +28,152 @@ import yaml
 # Reuse the same fingerprint + embed code paths as production ingest so the
 # evaluation reflects what we actually score in CI.
 from embed import embed_texts
-from fingerprint import ToolDescriptor, fingerprint_text
+from fingerprint import (
+    ToolDescriptor,
+    fingerprint_text,
+    infer_domain_action_entity,
+)
+
+
+# ---------- Fingerprint variants (offline experimentation only) ----------
+#
+# These are alternative fingerprint shapes evaluated against the same
+# labeled set. They DO NOT touch production ingest. The goal is to compare
+# separability before deciding whether to change `fingerprint.fingerprint_text`.
+#
+# Variant authors: keep these pure functions of ToolDescriptor — no I/O, no
+# globals — so the per-variant cache key stays stable.
+
+# Naive synonym families. Mapped tokens are replaced in BOTH the action
+# inferred from the wire name AND in the description text. Keep small;
+# this is a hypothesis test, not an ontology.
+_SEARCH_SYNS = {"find", "search", "lookup", "query"}
+_CREATE_SYNS = {"create", "new", "add", "insert"}
+_GET_SYNS = {"get", "fetch", "read", "retrieve"}
+_UPDATE_SYNS = {"update", "modify", "edit", "patch"}
+_DELETE_SYNS = {"delete", "remove", "void"}
+
+_SYNONYM_GROUPS = [
+    (_SEARCH_SYNS, "search"),
+    (_CREATE_SYNS, "create"),
+    (_GET_SYNS, "get"),
+    (_UPDATE_SYNS, "update"),
+    (_DELETE_SYNS, "delete"),
+]
+
+
+def _normalize_verb(token: str) -> str:
+    t = token.lower()
+    for group, canonical in _SYNONYM_GROUPS:
+        if t in group:
+            return canonical
+    return t
+
+
+def _normalize_description(text: str) -> str:
+    out = []
+    for word in text.split():
+        # Strip leading/trailing punctuation, normalize, restore.
+        head = ""
+        tail = ""
+        body = word
+        while body and not body[0].isalnum():
+            head += body[0]
+            body = body[1:]
+        while body and not body[-1].isalnum():
+            tail = body[-1] + tail
+            body = body[:-1]
+        out.append(head + _normalize_verb(body) + tail if body else word)
+    return " ".join(out)
+
+
+def _fp_baseline(d: ToolDescriptor) -> str:
+    """Production fingerprint shape — the control."""
+    return fingerprint_text(d)
+
+
+def _fp_no_domain(d: ToolDescriptor) -> str:
+    """Drop the `domain:` line. Hypothesis: the shared `domain: finance`
+    token across all governed-mcp tools inflates novel scores."""
+    _, action, entity = infer_domain_action_entity(d.name)
+    params = d.required_params()
+    parts = []
+    if action:
+        parts.append(f"action: {action}")
+    if entity:
+        parts.append(f"entity: {entity}")
+    if d.description:
+        parts.append(f"description: {d.description.strip()}")
+    if params:
+        parts.append("params: " + ", ".join(sorted(params)))
+    return "\n".join(parts)
+
+
+def _fp_synonyms(d: ToolDescriptor) -> str:
+    """Normalize verbs in action + description. Hypothesis: collapsing
+    find/search/lookup → search pulls semantic dups closer together."""
+    domain, action, entity = infer_domain_action_entity(d.name)
+    params = d.required_params()
+    parts = []
+    if domain:
+        parts.append(f"domain: {domain}")
+    if action:
+        parts.append(f"action: {_normalize_verb(action)}")
+    if entity:
+        parts.append(f"entity: {entity}")
+    if d.description:
+        parts.append(f"description: {_normalize_description(d.description.strip())}")
+    if params:
+        parts.append("params: " + ", ".join(sorted(params)))
+    return "\n".join(parts)
+
+
+def _fp_description_heavy(d: ToolDescriptor) -> str:
+    """Repeat the description twice. Hypothesis: weighting the semantic
+    payload over the structural tokens improves separability."""
+    domain, action, entity = infer_domain_action_entity(d.name)
+    params = d.required_params()
+    parts = []
+    if domain:
+        parts.append(f"domain: {domain}")
+    if action:
+        parts.append(f"action: {action}")
+    if entity:
+        parts.append(f"entity: {entity}")
+    if d.description:
+        desc = d.description.strip()
+        parts.append(f"description: {desc}")
+        parts.append(f"intent: {desc}")
+    if params:
+        parts.append("params: " + ", ".join(sorted(params)))
+    return "\n".join(parts)
+
+
+def _fp_combined(d: ToolDescriptor) -> str:
+    """no-domain + synonyms + description-heavy stacked together."""
+    _, action, entity = infer_domain_action_entity(d.name)
+    params = d.required_params()
+    parts = []
+    if action:
+        parts.append(f"action: {_normalize_verb(action)}")
+    if entity:
+        parts.append(f"entity: {entity}")
+    if d.description:
+        desc = _normalize_description(d.description.strip())
+        parts.append(f"description: {desc}")
+        parts.append(f"intent: {desc}")
+    if params:
+        parts.append("params: " + ", ".join(sorted(params)))
+    return "\n".join(parts)
+
+
+VARIANTS = {
+    "baseline": _fp_baseline,
+    "no-domain": _fp_no_domain,
+    "synonyms": _fp_synonyms,
+    "description-heavy": _fp_description_heavy,
+    "combined": _fp_combined,
+}
 
 
 DEFAULT_PAIRS = Path(__file__).parent / "tests" / "labeled_pairs.yaml"
@@ -87,7 +232,14 @@ def _fmt(x: float) -> str:
     return "n/a" if math.isnan(x) else f"{x:.3f}"
 
 
-def evaluate(pairs_path: Path, thresholds: Iterable[float]) -> dict:
+def evaluate(pairs_path: Path, thresholds: Iterable[float],
+             variant: str = "baseline") -> dict:
+    if variant not in VARIANTS:
+        raise SystemExit(
+            f"unknown variant: {variant!r} (choose from {sorted(VARIANTS)})"
+        )
+    fp_fn = VARIANTS[variant]
+
     raw = yaml.safe_load(pairs_path.read_text())
     pairs: list[dict] = raw.get("pairs", [])
     if not pairs:
@@ -101,15 +253,15 @@ def evaluate(pairs_path: Path, thresholds: Iterable[float]) -> dict:
     for pair in pairs:
         for side in ("a", "b"):
             d = _to_descriptor(pair[side])
-            text = fingerprint_text(d)
+            text = fp_fn(d)
             pair[f"{side}_fp"] = text
             if text not in fingerprints:
                 fingerprints[text] = len(fp_order)
                 fp_order.append(text)
 
     print(
-        f"embedding {len(fp_order)} unique fingerprints "
-        f"for {len(pairs)} pairs...",
+        f"[variant={variant}] embedding {len(fp_order)} unique "
+        f"fingerprints for {len(pairs)} pairs...",
         file=sys.stderr,
     )
     vectors = embed_texts(fp_order)
@@ -131,13 +283,64 @@ def evaluate(pairs_path: Path, thresholds: Iterable[float]) -> dict:
     for pair in pairs:
         by_cat[pair.get("category", "uncategorized")].append(pair)
 
-    return {"pairs": pairs, "sweep": sweep, "by_category": dict(by_cat)}
+    return {"variant": variant, "pairs": pairs, "sweep": sweep,
+            "by_category": dict(by_cat)}
+
+
+def _separability(pairs: list[dict]) -> dict:
+    dup_scores = [p["score"] for p in pairs if p["label"] == "duplicate"]
+    novel_scores = [p["score"] for p in pairs if p["label"] == "novel"]
+    if not dup_scores or not novel_scores:
+        return {"min_dup": float("nan"), "max_novel": float("nan"),
+                "margin": float("nan")}
+    return {
+        "min_dup": min(dup_scores),
+        "max_novel": max(novel_scores),
+        "margin": min(dup_scores) - max(novel_scores),
+    }
+
+
+def evaluate_all_variants(pairs_path: Path,
+                          thresholds: Iterable[float]) -> list[dict]:
+    """Run every registered variant over the same labeled set, returning
+    one result dict per variant. Used by --compare to surface the
+    relative impact of fingerprint-shape changes."""
+    return [evaluate(pairs_path, thresholds, variant=v) for v in VARIANTS]
+
+
+def render_comparison(results: list[dict],
+                      thresholds: Iterable[float]) -> None:
+    """Console-only summary table comparing all variants at each threshold."""
+    thresholds = list(thresholds)
+    print()
+    print("Variant comparison — F1 (duplicate class) at each threshold")
+    header = f"{'variant':<20} | " + " ".join(f"{t:>6.3f}" for t in thresholds) + " | sep_margin"
+    print(header)
+    print("-" * len(header))
+    for r in results:
+        sweep = {row["threshold"]: row for row in r["sweep"]}
+        f1s = " ".join(_fmt(sweep[t]["f1"]).rjust(6) for t in thresholds)
+        sep = _separability(r["pairs"])
+        margin = _fmt(sep["margin"])
+        print(f"{r['variant']:<20} | {f1s} | {margin:>10}")
+
+    print()
+    print("Separability (lowest dup − highest novel; >0 means perfectly separable)")
+    for r in results:
+        sep = _separability(r["pairs"])
+        print(
+            f"  {r['variant']:<20} "
+            f"min_dup={_fmt(sep['min_dup'])}  "
+            f"max_novel={_fmt(sep['max_novel'])}  "
+            f"margin={_fmt(sep['margin'])}"
+        )
 
 
 def render_console(result: dict) -> None:
     pairs = result["pairs"]
     sweep = result["sweep"]
     print()
+    print(f"Variant: {result.get('variant', 'baseline')}")
     print(f"Pairs: {len(pairs)} "
           f"(duplicates={sum(1 for p in pairs if p['label'] == 'duplicate')}, "
           f"novels={sum(1 for p in pairs if p['label'] == 'novel')})")
@@ -262,10 +465,20 @@ def main() -> int:
                     help="comma-separated thresholds to sweep")
     ap.add_argument("--markdown", type=Path, default=None,
                     help="optional path to write a markdown report")
+    ap.add_argument("--variant", default="baseline",
+                    choices=sorted(VARIANTS),
+                    help="fingerprint variant to evaluate (default: baseline)")
+    ap.add_argument("--compare", action="store_true",
+                    help="evaluate ALL variants and print a comparison table "
+                         "(ignores --markdown)")
     args = ap.parse_args()
 
     thresholds = tuple(float(t) for t in args.thresholds.split(",") if t)
-    result = evaluate(args.pairs, thresholds)
+    if args.compare:
+        results = evaluate_all_variants(args.pairs, thresholds)
+        render_comparison(results, thresholds)
+        return 0
+    result = evaluate(args.pairs, thresholds, variant=args.variant)
     render_console(result)
     if args.markdown:
         render_markdown(result, args.markdown, thresholds)

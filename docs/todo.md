@@ -87,6 +87,14 @@ they surface._
   **Next iteration:** grow the labeled set from real PRs (target
   30–50) and revisit the threshold + fingerprint shape choices.
 
+- [x] **Fingerprint variant A/B harness** — `--compare` evaluates
+  baseline + 4 alternative shapes against the labeled set in one
+  run. On the current 26 pairs, `combined` (no-domain + synonyms +
+  description-heavy) reduces the separability margin from −0.076 to
+  −0.028 and lifts F1@0.92 from 0.353 to 0.444. **Production
+  fingerprint unchanged** — not enough evidence on 26 pairs to
+  re-ingest. Revisit at ~50 real-world pairs.
+
 - [ ] **Quantitative precision/recall study (~~scaffold~~)** — above.
   Original ask: 30–50 pairs from real-world MCP servers. Current set
   is 26 pairs from the two demo specs. Open until we have a labeled
