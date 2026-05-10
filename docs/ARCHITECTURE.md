@@ -1097,6 +1097,49 @@ CSV per (prompt × config × run) + bar chart + 1-paragraph narrative + an App I
 11. **When MCP resources / prompts ship in APIM-MCP**, retire any thin shims and consolidate onto APIM-native exposure.
 12. **Retire `<domain>-raw/mcp` only when migrating to Option E** — at which point team-internal tools become `<team>-internal/mcp` profile MCP servers. Until then, `-raw` is permanent operational furniture, **not** PoC scaffolding.
 
+### 24.A Appendix — Post-implementation reflections (2026-05-10)
+
+After building the PoC end-to-end (L1 + L2 + L3 + CI + eval + 76-pair labeled set), the following observations are worth carrying into the pilot. Each is rooted in something that surfaced *during* implementation, not in upfront planning.
+
+#### 24.A.1 What the build vindicated
+
+- **The §3.3 argument for "L1 lint + L3 rewrite" is correct in practice, not just in theory.** The first time `messy-mcp/createCustomer` got rewritten to `customerCreate` at the gateway was the moment the architecture stopped being a slide and started being a product. L1 alone could never have done it — `createCustomer` is not a *standards violation*, it's a *legacy-name compatibility surface*, and only L3 has the gateway position to reconcile it.
+- **`canonical_id ≡ wire name` (§3.2) was a load-bearing decision.** Every bug we hit during the build was traceable to a single string in one place. Teams that don't read §3.2 first will lose days to "why does my Cosmos lookup 404?".
+- **Empirical labeled-set methodology beat opinion-driven threshold tuning.** Going from 26 → 42 → 76 pairs forced us to admit the single-threshold model has a ceiling and to ship the REVIEW band as a structural fix rather than knob-tweaking. The expanded set is in `docs/eval/precision-recall.md`; the methodology should travel to any production rollout.
+
+#### 24.A.2 Areas to invest in before customer pilot
+
+| # | Gap | Why it matters | Recommended action |
+|---|---|---|---|
+| 1 | **Embedding-only similarity has a real ceiling.** Highest novel = 0.810 (`jira/get_issue` vs `jira/get_project`); lowest cross-vendor duplicate = 0.546. No fingerprint variant closes this gap. | The REVIEW band catches it for humans, but a customer with thousands of tools will get review fatigue. | Add a **second signal** — schema-overlap (Jaccard over required params) and/or an **action-verb taxonomy** (create/get/list/delete/update). Combine via calibrated logistic regression; the 76-pair set is large enough to fit it. Track as **ADR-007**. |
+| 2 | **APIM-MCP body-forwarding regression** (`Azure-Samples/AI-Gateway#315`). Backend receives only the last property's scalar instead of the assembled JSON object. Reproduces with `<base/>` only — not our bug. | Blocks any customer who exposes managed REST APIs as MCP servers (the entire V3 thesis). | Externally: track #315 + Azure Support ticket (drafts in `docs/external/`). Internally: document a shim-API workaround so customers can pilot before Microsoft ships the fix. |
+| 3 | **No production observability tier.** §3 scoped this out; pilot can't. | Without SLOs and alerts, regressions go undetected until a customer reports them. | Workbook tiles for: `cache-lookup-value` hit rate, `x-mcp-canonical-rewrite` rate (spike = alias drift), Cosmos throttling, ingest run summary. Alert on filter-rate=0 across all servers (suggests policy detached). |
+| 4 | **Cosmos cache TTL = 60s** (§3.1 trade-off). | A canonical update takes up to 60s to propagate — fine for PoC, surprising for customers. | Build the §A path: Cosmos Change Feed → Event Grid → APIM cache flush. Reduces propagation to seconds. |
+| 5 | **Verdict thresholds (0.92/0.87/0.65) are calibrated against our 76 pairs.** | Customer corpora differ. A finance-only customer needs different thresholds than a multi-domain platform. | Ship a **calibration script** that any customer can run on their own labeled set to recommend their own thresholds. Output: per-customer `config.py` overrides. |
+| 6 | **No multi-tenancy story.** Single APIM, single Cosmos. | A customer with team A and team B will want shared discovery but isolated writes. | Short ADR before pilot: partition `mcp-canonical-map` by `team_id`; cross-team reads via composite query; writes gated by Entra App Roles per team. |
+| 7 | **No feedback loop on REVIEW verdicts.** | When a REVIEW PR comment fires, we don't know if a human triaged it as TP or FP. The labeled set never improves itself. | Add a `/governance:not-a-dup` and `/governance:confirmed-dup` PR comment scraper that appends new pairs to `labeled_pairs.yaml` with reviewer attribution. Closes the loop and improves precision/recall over time. |
+| 8 | **Wire-name normalization is APIM-MCP-specific.** | If we federate to Bedrock or Vertex, *their* MCP gateways will have different normalization rules (or none). The §3.2 invariant `canonical_id ≡ wire name` becomes per-gateway. | Before federation: extract the normalization rule into a `wire_name_for(authored, gateway)` function in `apim_wirenames.py` (already partly there). Add a Bedrock variant. Test both against the same `tools-cli lint`. |
+
+#### 24.A.3 Trade-offs that held up well
+
+The §3.1 "smart trade-offs" list survived contact with reality. None of these need revisiting before pilot:
+
+- Two MCP servers (not five) — sufficient to demonstrate cross-server canonicalization.
+- Single domain (finance) — depth over breadth, validated.
+- Deterministic scoring over LLM-as-judge — replayability matters more than marginal accuracy.
+- Single-linkage clustering at 0.88 — over-clusters slightly, humans split via `pinned_canonical`. Confirmed correct bias for governance use.
+- APIM cache vs Redis — built in, one less service. Upgrade path clear.
+
+#### 24.A.4 Trade-offs that need revisiting at pilot
+
+- **Local terraform state.** Pilot must use the storage-account + lock setup (`envs/dev.backend.hcl.example` is the template). Non-negotiable.
+- **No real RBAC matrix.** Pilot must scope CODEOWNERS + branch protection + Entra App Roles per the §14.3 governance plane (Ring 2 in §3.1).
+- **Demo specs as reference data.** Pilot's labeled set must be customer-specific, not the canonical `modelcontextprotocol/servers` examples. The 76-pair set is a methodology demonstrator, not a production training set.
+
+#### 24.A.5 One-line summary
+
+The three-layer model is the right shape. The areas above are not "we picked wrong"; they're "the next investment, once a customer commits." That is the healthy state for an exiting POC.
+
 ---
 
 ## A. Azure Services That Could Strengthen This PoC
