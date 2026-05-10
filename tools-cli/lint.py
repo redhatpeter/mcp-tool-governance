@@ -155,37 +155,52 @@ def iter_operations(spec_path: Path) -> Iterable[Operation]:
             )
 
 
-def _read_servers_manifest() -> set[str] | None:
-    """Return the set of declared filename stems from apim/openapi/_servers.yaml,
-    or None if the manifest is missing (in which case E007 is skipped, matching
-    openapi_source.py's fallback semantics).
+def _read_servers_manifest() -> tuple[set[str], set[str]] | None:
+    """Return (declared_stems, unmanaged_stems) from apim/openapi/_servers.yaml,
+    or None if the manifest is missing.
 
-    Stdlib-only mini-parser for the manifest's flat `key: value` shape under
-    `servers:`. Avoids forcing PyYAML into the linter's runtime, which is a
-    deliberate constraint (lint runs on every PR; minimal deps wins)."""
+    declared_stems = union of `servers:` keys + `unmanaged:` entries — the
+    set of stems that pass E007.
+    unmanaged_stems = the `unmanaged:` list — stems that are recognized but
+    intentionally exempt from per-operation lint rules (demo props).
+
+    Stdlib-only mini-parser for the manifest's flat shape. Avoids forcing
+    PyYAML into the linter's runtime, which is a deliberate constraint
+    (lint runs on every PR; minimal deps wins)."""
     if not MANIFEST_PATH.exists():
         return None
-    stems: set[str] = set()
-    in_servers = False
+    declared: set[str] = set()
+    unmanaged: set[str] = set()
+    section: str | None = None
     for raw_line in MANIFEST_PATH.read_text().splitlines():
         line = raw_line.split("#", 1)[0].rstrip()
         if not line.strip():
             continue
         if not line.startswith((" ", "\t")):
-            in_servers = line.strip().rstrip(":") == "servers"
+            head = line.strip().rstrip(":")
+            section = head if head in ("servers", "unmanaged") else None
             continue
-        if not in_servers:
+        if section is None:
             continue
         stripped = line.strip()
-        if ":" not in stripped:
-            continue
-        key = stripped.split(":", 1)[0].strip().strip("'\"")
-        if key:
-            stems.add(key)
-    return stems
+        if section == "servers":
+            if ":" not in stripped:
+                continue
+            key = stripped.split(":", 1)[0].strip().strip("'\"")
+            if key:
+                declared.add(key)
+        elif section == "unmanaged":
+            # accept either '- foo' or '- "foo"'
+            item = stripped.lstrip("-").strip().strip("'\"")
+            if item:
+                declared.add(item)
+                unmanaged.add(item)
+    return declared, unmanaged
 
 
-def lint_spec(spec_path: Path, manifest_stems: set[str] | None = None) -> list[Finding]:
+def lint_spec(spec_path: Path,
+              declared_stems: set[str] | None = None,
+              unmanaged_stems: set[str] | None = None) -> list[Finding]:
     findings: list[Finding] = []
     seen_wire: dict[str, str] = {}     # wire_name -> first op_path that produced it
 
@@ -193,12 +208,20 @@ def lint_spec(spec_path: Path, manifest_stems: set[str] | None = None) -> list[F
     # Whole-spec error (no operation context). Skipped if the manifest is
     # missing entirely — that case is handled by openapi_source.py's fallback
     # behavior. When the manifest exists, every spec must opt in.
-    if manifest_stems is not None and spec_path.stem not in manifest_stems:
+    if declared_stems is not None and spec_path.stem not in declared_stems:
         findings.append(Finding(
             "E", "E007", spec_path.name, "<file>", "", "",
             f"spec stem '{spec_path.stem}' is not declared in apim/openapi/_servers.yaml — "
             f"add a 'servers:' entry mapping it to an MCP server name, or remove the spec"
         ))
+        # Don't run per-op rules — the file shouldn't be here at all.
+        return findings
+
+    # Unmanaged specs (demo props): declared so E007 passes, but per-op
+    # rules are skipped because the violations are intentional. The L2
+    # resolver still ingests these.
+    if unmanaged_stems is not None and spec_path.stem in unmanaged_stems:
+        return findings
 
     try:
         ops = list(iter_operations(spec_path))
@@ -324,8 +347,14 @@ def main() -> int:
 
     if args.specs:
         specs = [Path(p) for p in args.specs]
+        # Explicit file list — caller wants to see everything, including
+        # unmanaged demo props (so the customer-demo Act 1 still shows the
+        # 22 errors on finance-messy.json). The unmanaged exemption only
+        # applies when we're globbing the default set.
+        explicit_invocation = True
     else:
         specs = sorted(REPO_ROOT.glob(DEFAULT_GLOB))
+        explicit_invocation = False
 
     if not specs:
         print(f"no OpenAPI specs found (looked in {REPO_ROOT/DEFAULT_GLOB})",
@@ -333,12 +362,20 @@ def main() -> int:
         return 2
 
     all_findings: list[Finding] = []
-    manifest_stems = _read_servers_manifest()
+    manifest = _read_servers_manifest()
+    declared_stems = manifest[0] if manifest else None
+    unmanaged_stems = manifest[1] if manifest else None
+    # Suppress the unmanaged exemption when the user named files explicitly.
+    effective_unmanaged = None if explicit_invocation else unmanaged_stems
     for s in specs:
         if not s.exists():
             print(f"not found: {s}", file=sys.stderr)
             return 2
-        all_findings.extend(lint_spec(s, manifest_stems=manifest_stems))
+        all_findings.extend(lint_spec(
+            s,
+            declared_stems=declared_stems,
+            unmanaged_stems=effective_unmanaged,
+        ))
 
     if args.no_warn:
         all_findings = [f for f in all_findings if f.severity == "E"]
@@ -354,8 +391,15 @@ def main() -> int:
             findings = by_spec.get(spec, [])
             errs = sum(1 for f in findings if f.severity == "E")
             warns = sum(1 for f in findings if f.severity == "W")
-            status = "FAIL" if errs else ("warn" if warns else "ok")
-            print(f"\n[{status}] {spec}  ({ops_in_spec} ops, {errs} errors, {warns} warnings)")
+            spec_stem = Path(spec).stem
+            is_unmanaged = effective_unmanaged is not None and spec_stem in effective_unmanaged
+            if is_unmanaged:
+                status = "skip"
+                tag = " — unmanaged (lint rules suspended; declared as demo prop)"
+            else:
+                status = "FAIL" if errs else ("warn" if warns else "ok")
+                tag = ""
+            print(f"\n[{status}] {spec}  ({ops_in_spec} ops, {errs} errors, {warns} warnings){tag}")
             for f in findings:
                 print(f.fmt())
         total_e = sum(1 for f in all_findings if f.severity == "E")

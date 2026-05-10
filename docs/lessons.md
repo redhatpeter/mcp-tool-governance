@@ -6,6 +6,34 @@ few lines on what we hit and what to do (or avoid) next time.
 
 ---
 
+## 2026-05-10 — Demo props in a CI-linted directory will fail your linter eventually
+
+**Symptom:** `validate-mcp-tools` had been silently failing for ~12 hours on
+every push that touched `tools-cli/lint.py` or `apim/openapi/**`. The linter
+correctly flagged 22 errors against `apim/openapi/finance-messy.json` — the
+spec we **intentionally** litter with E004/E005/E006 violations to demo Act 1.
+
+**Root cause:** demo prop sat in the same directory the CI workflow globs.
+The demo's whole point is that this spec fails lint, so we couldn't just
+"clean it up". And the failure was rare-trigger because the workflow's
+`paths:` filter only matched the lint script + the spec dir itself.
+
+**Fix:** added an `unmanaged:` list to `apim/openapi/_servers.yaml`. The
+linter declares those stems (so E007 still passes — the spec is a recognized
+file) but skips per-operation rules **only when invoked via the default
+glob**. When the user names a file explicitly on the command line
+(`python3 tools-cli/lint.py apim/openapi/finance-messy.json`), the
+exemption is bypassed and you get the full 22-error report — which is
+exactly what Act 1 of the customer demo runs.
+
+**Lesson:** if a directory contains both "the gold standard" and "the
+counter-example", give your linter a way to tell them apart. Default-glob
+mode = "be a good CI citizen"; explicit-file mode = "give me everything".
+And add a watch on any CI workflow whose path filter is so narrow it might
+not have run in days — silent failures hide there.
+
+---
+
 ## 2026-05-08 — `az rest` returns "Bad Request - Invalid URL" against ARM in this environment
 
 **Symptom:** Every `az rest --method GET --url https://management.azure.com/...`

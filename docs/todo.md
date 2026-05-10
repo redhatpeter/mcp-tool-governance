@@ -23,6 +23,7 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ Threshold sweep table per non-OK row (0.85 / 0.88 / 0.92 / 0.95 + current)
 - ✅ Spec-source manifest (`apim/openapi/_servers.yaml`) replaces hard-coded `SERVER_BY_FILE`
 - ✅ Lint integration with manifest — new rule **E007** (spec stem must be declared)
+- ✅ Manifest `unmanaged:` list + lint exemption — fixes pre-existing CI failure on demo prop
 
 ## P0 — operational gaps that will bite us next demo
 

@@ -5,6 +5,7 @@
 #   - apps/dup-resolver/openapi_source.py  (reads specs into ToolDescriptors)
 #   - apps/dup-resolver/check_pr.py        (rename detection per server)
 #   - apps/dup-resolver/ingest.py          (per-server reconciliation)
+#   - tools-cli/lint.py                    (E007: stems must be declared)
 #
 # To add a new MCP server: drop a new <stem>.json under apim/openapi/ and
 # add a row below. No code changes required.
@@ -12,3 +13,14 @@
 servers:
   finance-governed: governed-mcp
   finance-messy: messy-mcp
+
+# Demo props: stems that are declared (so lint E007 doesn't fire) but
+# whose lint violations are intentional and must not block CI. The L2
+# resolver still ingests these — they're real MCP servers — but the L1
+# linter skips per-operation rules for them.
+#
+# Use sparingly. `finance-messy` exists to demonstrate failure modes
+# #1–#5 for the customer demo; its E004/E005/E006 violations are the
+# point. Production specs should never appear in this list.
+unmanaged:
+  - finance-messy
