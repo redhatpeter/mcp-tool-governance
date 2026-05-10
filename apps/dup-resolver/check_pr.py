@@ -177,6 +177,15 @@ def score_candidate(op: dict[str, Any],
                 f"top match '{top['tool_name']}' (score {score:.3f}) "
                 f"is close to threshold {threshold}; reviewer should confirm"
             )
+        elif score >= config.REVIEW_THRESHOLD:
+            verdict = "REVIEW"
+            reason = (
+                f"top match '{top['tool_name']}' on {top['server']} "
+                f"(score {score:.3f}) is below the hard-block threshold "
+                f"{threshold} but above the soft review tier "
+                f"{config.REVIEW_THRESHOLD}; reviewer should sanity-check "
+                f"this isn't a cross-vendor / cross-domain duplicate"
+            )
         else:
             verdict = "OK"
             reason = f"no near-duplicates (top score {score:.3f} < {threshold})"
@@ -203,7 +212,7 @@ def score_candidate(op: dict[str, Any],
 # Markdown report
 # ---------------------------------------------------------------------------
 
-VERDICT_EMOJI = {"DUPLICATE": "🛑", "WARN": "⚠️", "OK": "✅", "INFO": "ℹ️"}
+VERDICT_EMOJI = {"DUPLICATE": "🛑", "WARN": "⚠️", "REVIEW": "🔍", "OK": "✅", "INFO": "ℹ️"}
 
 # Threshold buckets used in the per-row sweep. The configured threshold is
 # inserted into this list at render time and de-duplicated, so reviewers can
@@ -218,6 +227,8 @@ def _verdict_at(score: float, threshold: float) -> str:
         return "DUPLICATE"
     if score >= threshold - 0.05:
         return "WARN"
+    if score >= config.REVIEW_THRESHOLD:
+        return "REVIEW"
     return "OK"
 
 
@@ -225,13 +236,14 @@ def render_report(results: list[dict[str, Any]]) -> str:
     if not results:
         return "## L1 similarity check\n\nNo new operations introduced — nothing to score.\n"
     lines = ["## L1 similarity check", ""]
-    summary = {"DUPLICATE": 0, "WARN": 0, "OK": 0, "INFO": 0}
+    summary = {"DUPLICATE": 0, "WARN": 0, "REVIEW": 0, "OK": 0, "INFO": 0}
     for r in results:
         summary[r["verdict"]] += 1
     lines.append(
         f"**{len(results)} new operation(s) scored** — "
         f"🛑 {summary['DUPLICATE']} duplicate · "
         f"⚠️ {summary['WARN']} warn · "
+        f"🔍 {summary['REVIEW']} review · "
         f"✅ {summary['OK']} ok"
         + (f" · ℹ️ {summary['INFO']} rename" if summary['INFO'] else "")
     )

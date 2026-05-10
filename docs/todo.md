@@ -35,8 +35,7 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ L3 policies deployed to APIM (`governed-mcp`, `messy-mcp`) via `apim/deploy/deploy_l3_policies.py`
 - ✅ Wire-name resolver (`apim_wirenames`) — ingest reads `properties.mcpTools[].{name, operationId}` from APIM as the source of truth; canonical_map keys now match runtime `tools/list` names. Smoke on `messy-mcp`: 3 dropped, 10 kept (`x-mcp-tools-filtered: 3`).
 - ✅ L3 E2E smoke green (commit `85c3c26`) — 6/6 assertions across both servers, including `governed-mcp` 500 root-caused to `cache-store-value` rejecting empty string (sentinel fix landed in `tools-list-filter.policy.xml`).
-- ✅ CI gate (`.github/workflows/policy-tests.yml`, run `25637397605`) — `unit-tests` job runs `test_wirename_resolution.py` (3/3) and `policy-contract` job replays `validate_policies.py` against live Cosmos (8/8). Triggers on changes to `apps/dup-resolver/{canonical_map,openapi_source,apim_wirenames,ingest}.py`, `apim/policies/**`, `apim/deploy/**`, the workflow itself, and `workflow_dispatch`.
-
+- ✅ CI gate (`.github/workflows/policy-tests.yml`, run `25637397605`) — `unit-tests` job runs `test_wirename_resolution.py` (3/3) and `policy-contract` job replays `validate_policies.py` against live Cosmos (8/8). Triggers on changes to `apps/dup-resolver/{canonical_map,openapi_source,apim_wirenames,ingest}.py`, `apim/policies/**`, `apim/deploy/**`, the workflow itself, and `workflow_dispatch`.- \u2705 Two-tier verdict (`REVIEW` band) added to `check_pr.py` (commit pending). Hard-block at `CLUSTER_THRESHOLD` unchanged; new `REVIEW_THRESHOLD` (default `0.65`, env-overridable) catches real-world cross-vendor semantic duplicates surfaced by the expanded labeled set without failing the check. Regression test at `tests/test_verdict_tiers.py` wired into the `unit-tests` CI job. README + path triggers updated.
 ## P0 — operational gaps that will bite us next demo
 
 _All P0 items closed in this session._

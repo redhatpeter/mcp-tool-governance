@@ -53,6 +53,13 @@ MCP_SERVERS = [s.strip() for s in _env("MCP_SERVERS", "governed-mcp,messy-mcp").
 # --- Clustering / embeddings ---
 EMBEDDING_DIMS = int(_env("EMBEDDING_DIMS", "3072"))
 CLUSTER_THRESHOLD = float(_env("CLUSTER_THRESHOLD", "0.88"))
+# Soft "reviewer should look at this" tier. Anything in
+# [REVIEW_THRESHOLD, CLUSTER_THRESHOLD - 0.05) gets a REVIEW verdict in
+# the PR comment but does NOT fail the check. Tuned from the
+# precision/recall study (docs/eval/precision-recall.md): 0.65 catches
+# real-world cross-vendor semantic duplicates (e.g. github.create_issue
+# vs linear.createIssue at 0.651) without blocking on them.
+REVIEW_THRESHOLD = float(_env("REVIEW_THRESHOLD", "0.65"))
 
 # --- Canonical map (Cosmos) ---
 # L2 elects a canonical per cluster and writes it here for L3 to read.

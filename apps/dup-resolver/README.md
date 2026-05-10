@@ -45,7 +45,7 @@ Two entry points:
 
 ### `check_pr.py` — what the verdict contains
 
-- **Per-operation row:** `verdict` (DUPLICATE / WARN / OK / INFO),
+- **Per-operation row:** `verdict` (DUPLICATE / WARN / REVIEW / OK / INFO),
   top-match score, top-match server + tool name, threshold in effect.
 - **Rename detection** *(INFO row, exit 0):* if the top-match's tool name
   is also being **deleted** in the same PR (computed by diffing the
@@ -106,6 +106,7 @@ cp .env.example .env    # fill in endpoints/keys (RBAC preferred — see below)
 | `MCP_SOURCE` | `apim` (default) or `openapi` (read specs from `apim/openapi/*.json`) |
 | `OPENAPI_SPEC_DIR` | `apim/openapi` (used when `MCP_SOURCE=openapi`) |
 | `CLUSTER_THRESHOLD` | `0.88` default; see *Threshold tuning* below |
+| `REVIEW_THRESHOLD` | `0.65` default; soft "reviewer should look at this" tier — see *Threshold tuning* |
 
 Auth uses `DefaultAzureCredential` for both AOAI and AI Search — `az login` is enough locally.
 
@@ -114,7 +115,8 @@ Auth uses `DefaultAzureCredential` for both AOAI and AI Search — `az login` is
 The cosine-similarity score above which two tools are considered **duplicates** rather than merely related. Affects:
 - the L2 CI gate (`similarity-check.yml`) — `>= threshold` fails the PR
 - the WARN band (`threshold − 0.05 ≤ score < threshold`) — flagged for reviewer
-- single-linkage clustering inside `cluster.py` — same threshold
+- the **REVIEW** band (`REVIEW_THRESHOLD ≤ score < threshold − 0.05`) — surfaced in the PR comment but does not fail the check (added 2026-05-10 from the precision/recall study at `docs/eval/precision-recall.md`; catches real-world cross-vendor semantic duplicates such as `github.create_issue` vs `linear.createIssue` at 0.651)
+- single-linkage clustering inside `cluster.py` — uses `CLUSTER_THRESHOLD` only
 
 | Value | Behavior | When to use |
 |---|---|---|

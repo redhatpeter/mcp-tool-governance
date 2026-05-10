@@ -21,6 +21,8 @@ on:
       - "apps/dup-resolver/openapi_source.py"
       - "apps/dup-resolver/apim_wirenames.py"
       - "apps/dup-resolver/ingest.py"
+      - "apps/dup-resolver/check_pr.py"
+      - "apps/dup-resolver/config.py"
       - "apps/dup-resolver/tests/**"
       - "apim/policies/**"
       - "apim/deploy/**"
@@ -32,6 +34,8 @@ on:
       - "apps/dup-resolver/openapi_source.py"
       - "apps/dup-resolver/apim_wirenames.py"
       - "apps/dup-resolver/ingest.py"
+      - "apps/dup-resolver/check_pr.py"
+      - "apps/dup-resolver/config.py"
       - "apps/dup-resolver/tests/**"
       - "apim/policies/**"
       - "apim/deploy/**"
@@ -61,6 +65,14 @@ jobs:
           SEARCH_ENDPOINT: "https://placeholder.search.windows.net"
         working-directory: apps/dup-resolver
         run: python tests/test_wirename_resolution.py
+
+      - name: Verdict-tier regression test
+        # Same env-loading constraint as above (check_pr imports config).
+        env:
+          AOAI_ENDPOINT: "https://placeholder.openai.azure.com"
+          SEARCH_ENDPOINT: "https://placeholder.search.windows.net"
+        working-directory: apps/dup-resolver
+        run: python tests/test_verdict_tiers.py
 
   policy-contract:
     # Replays L3 Cosmos queries against the live canonical_map. Skipped
