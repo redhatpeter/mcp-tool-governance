@@ -79,9 +79,6 @@
               body["params"]["name"] = (string)context.Variables["canonicalTool"];
               return body.ToString();
             }</set-body>
-            <set-header name="x-mcp-canonical-rewrite" exists-action="override">
-              <value>@($"{context.Variables["requestedTool"]} -> {context.Variables["canonicalTool"]}")</value>
-            </set-header>
           </when>
         </choose>
 
@@ -93,6 +90,16 @@
   </backend>
   <outbound>
     <base />
+<choose>
+      <when condition="@(context.Variables.ContainsKey("requestedTool")
+                       && context.Variables.ContainsKey("canonicalTool")
+                       && (string)context.Variables["canonicalTool"] != (string)context.Variables["requestedTool"])">
+        <set-header name="x-mcp-canonical-rewrite" exists-action="override">
+          <value>@($"{context.Variables["requestedTool"]} -> {context.Variables["canonicalTool"]}")</value>
+        </set-header>
+      </when>
+    </choose>
+
 <choose>
       <when condition="@(context.Response.StatusCode >= 200 && context.Response.StatusCode < 300)">
 
@@ -185,15 +192,10 @@
               return dropped;
             }" />
 
+            
             <set-body>@(((JObject)context.Variables["rpcResp"]).ToString())</set-body>
             <set-header name="x-mcp-tools-filtered" exists-action="override">
               <value>@(((int)context.Variables["droppedCount"]).ToString())</value>
-            </set-header>
-            <set-header name="x-mcp-tools-kept" exists-action="override">
-              <value>@(((JArray)((JObject)((JObject)context.Variables["rpcResp"])["result"])["tools"]).Count.ToString())</value>
-            </set-header>
-            <set-header name="x-mcp-aliasdrop-csv" exists-action="override">
-              <value>@((string)context.Variables["aliasDropCsv"])</value>
             </set-header>
 
           </when>

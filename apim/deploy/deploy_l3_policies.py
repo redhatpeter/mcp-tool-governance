@@ -101,7 +101,14 @@ def build_merged_policy(server_name: str) -> str:
     filter_xml = filter_xml.replace("<server-name>", server_name)
 
     inbound_body = _extract_inbound_body(rewrite)
-    outbound_body = _extract_outbound_body(filter_xml)
+    # Merge BOTH outbounds: the rewrite policy emits the
+    # `x-mcp-canonical-rewrite` response header from <outbound> (because
+    # set-header in <inbound> targets the request, not the response), and
+    # the filter policy does the tools/list filtering. Order matters only
+    # for shared variables — these two don't overlap.
+    rewrite_outbound = _extract_outbound_body(rewrite)
+    filter_outbound = _extract_outbound_body(filter_xml)
+    outbound_body = (rewrite_outbound + "\n\n" + filter_outbound).strip()
 
     merged = f"""<policies>
   <inbound>

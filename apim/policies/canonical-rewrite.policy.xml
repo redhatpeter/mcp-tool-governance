@@ -143,7 +143,10 @@
           </when>
         </choose>
 
-        <!-- 3d. Rewrite the JSON-RPC body if alias != canonical -->
+        <!-- 3d. Rewrite the JSON-RPC body if alias != canonical.
+             The response header `x-mcp-canonical-rewrite` is emitted in
+             <outbound> below — `set-header` in <inbound> would set the
+             *request* header (which the backend would just ignore). -->
         <choose>
           <when condition="@((string)context.Variables["canonicalTool"] != (string)context.Variables["requestedTool"])">
             <set-body>@{
@@ -151,9 +154,6 @@
               body["params"]["name"] = (string)context.Variables["canonicalTool"];
               return body.ToString();
             }</set-body>
-            <set-header name="x-mcp-canonical-rewrite" exists-action="override">
-              <value>@($"{context.Variables["requestedTool"]} -> {context.Variables["canonicalTool"]}")</value>
-            </set-header>
           </when>
         </choose>
 
@@ -161,6 +161,20 @@
     </choose>
   </inbound>
   <backend><base /></backend>
-  <outbound><base /></outbound>
+  <outbound>
+    <base />
+    <!-- Emit the rewrite header on the response so callers/App Insights
+         can see when an alias was canonicalised. Guarded so it only
+         fires for tools/call frames that actually rewrote the name. -->
+    <choose>
+      <when condition="@(context.Variables.ContainsKey("requestedTool")
+                       && context.Variables.ContainsKey("canonicalTool")
+                       && (string)context.Variables["canonicalTool"] != (string)context.Variables["requestedTool"])">
+        <set-header name="x-mcp-canonical-rewrite" exists-action="override">
+          <value>@($"{context.Variables["requestedTool"]} -> {context.Variables["canonicalTool"]}")</value>
+        </set-header>
+      </when>
+    </choose>
+  </outbound>
   <on-error><base /></on-error>
 </policies>
