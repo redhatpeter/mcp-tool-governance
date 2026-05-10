@@ -238,3 +238,173 @@ pairs:
          description: "Generic list — actually returns invoices." }
     b: { server: governed-mcp, name: financeCustomerSearch,
          description: "Search the customer directory by query string." }
+
+  # =====================================================================
+  # Real-world pairs sourced from the canonical
+  # `modelcontextprotocol/servers` reference repos and other widely-used
+  # public MCP servers. Tool names + descriptions are paraphrased from
+  # their published schemas. Server names below are illustrative
+  # ("filesystem", "github", "postgres", …) — the evaluator does not
+  # consume the server field as part of the fingerprint.
+  # =====================================================================
+
+  # ---- Cross-server semantic duplicates ----
+  - label: duplicate
+    category: cross_server_dup
+    notes: "filesystem.read_file vs gdrive.read_file — same intent, different storage backend"
+    a: { server: filesystem, name: read_file,
+         description: "Read the complete contents of a file from the file system.",
+         required: [path] }
+    b: { server: gdrive, name: gdrive_read_file,
+         description: "Read the contents of a file from Google Drive by file id.",
+         required: [file_id] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "postgres.query vs sqlite.read_query — read-only SQL execution"
+    a: { server: postgres, name: query,
+         description: "Run a read-only SQL query against the connected PostgreSQL database.",
+         required: [sql] }
+    b: { server: sqlite, name: read_query,
+         description: "Execute a SELECT query on the SQLite database and return rows.",
+         required: [query] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "GitHub create_issue vs hypothetical Linear createIssue — same intent across vendors"
+    a: { server: github, name: create_issue,
+         description: "Create a new issue in a GitHub repository.",
+         required: [owner, repo, title] }
+    b: { server: linear, name: createIssue,
+         description: "Create a new issue in a Linear team.",
+         required: [teamId, title] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "Slack post_message vs Discord send_message — same intent, different chat platform"
+    a: { server: slack, name: slack_post_message,
+         description: "Post a message to a Slack channel.",
+         required: [channel_id, text] }
+    b: { server: discord, name: send_message,
+         description: "Send a message to a Discord channel.",
+         required: [channel_id, content] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "Brave web search vs hypothetical Google web search"
+    a: { server: brave-search, name: brave_web_search,
+         description: "Perform a web search using the Brave Search API.",
+         required: [query] }
+    b: { server: google-search, name: google_web_search,
+         description: "Perform a web search using Google.",
+         required: [query] }
+
+  - label: duplicate
+    category: cross_server_dup
+    notes: "fetch.fetch vs puppeteer.navigate — both retrieve a URL's content"
+    a: { server: fetch, name: fetch,
+         description: "Fetch a URL and return its contents as markdown.",
+         required: [url] }
+    b: { server: puppeteer, name: puppeteer_navigate,
+         description: "Navigate the browser to a URL and return the rendered page.",
+         required: [url] }
+
+  # ---- Real-world novels: same domain, different entity ----
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "GitHub: issues vs pull requests — related but distinct entities"
+    a: { server: github, name: list_issues,
+         description: "List issues in a GitHub repository.",
+         required: [owner, repo] }
+    b: { server: github, name: list_pull_requests,
+         description: "List pull requests in a GitHub repository.",
+         required: [owner, repo] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "Brave web vs local search — same vendor, distinct corpora"
+    a: { server: brave-search, name: brave_web_search,
+         description: "Perform a web search using the Brave Search API.",
+         required: [query] }
+    b: { server: brave-search, name: brave_local_search,
+         description: "Search for local businesses and points of interest.",
+         required: [query] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "Slack channels vs messages"
+    a: { server: slack, name: slack_list_channels,
+         description: "List public channels in a Slack workspace." }
+    b: { server: slack, name: slack_get_channel_history,
+         description: "Get recent messages from a Slack channel.",
+         required: [channel_id] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "filesystem: file content vs file metadata"
+    a: { server: filesystem, name: read_file,
+         description: "Read the complete contents of a file from the file system.",
+         required: [path] }
+    b: { server: filesystem, name: get_file_info,
+         description: "Get metadata (size, mtime, permissions) for a file or directory.",
+         required: [path] }
+
+  - label: novel
+    category: same_domain_diff_entity
+    notes: "memory: entities vs relations"
+    a: { server: memory, name: create_entities,
+         description: "Create new entities in the knowledge graph.",
+         required: [entities] }
+    b: { server: memory, name: create_relations,
+         description: "Create relations between existing entities in the knowledge graph.",
+         required: [relations] }
+
+  # ---- Real-world novels: same entity, different action ----
+  - label: novel
+    category: same_entity_diff_action
+    notes: "filesystem read vs write"
+    a: { server: filesystem, name: read_file,
+         description: "Read the complete contents of a file from the file system.",
+         required: [path] }
+    b: { server: filesystem, name: write_file,
+         description: "Write content to a file, creating it if it does not exist.",
+         required: [path, content] }
+
+  - label: novel
+    category: same_entity_diff_action
+    notes: "GitHub: issue create vs issue get"
+    a: { server: github, name: create_issue,
+         description: "Create a new issue in a GitHub repository.",
+         required: [owner, repo, title] }
+    b: { server: github, name: get_issue,
+         description: "Get the details of a specific issue by number.",
+         required: [owner, repo, issue_number] }
+
+  - label: novel
+    category: same_entity_diff_action
+    notes: "puppeteer: navigate vs screenshot vs click — different actions on same page"
+    a: { server: puppeteer, name: puppeteer_navigate,
+         description: "Navigate the browser to a URL.",
+         required: [url] }
+    b: { server: puppeteer, name: puppeteer_screenshot,
+         description: "Take a screenshot of the current page.",
+         required: [name] }
+
+  # ---- Real-world novels: completely unrelated cross-domain ----
+  - label: novel
+    category: unrelated
+    a: { server: postgres, name: query,
+         description: "Run a read-only SQL query against the connected PostgreSQL database.",
+         required: [sql] }
+    b: { server: slack, name: slack_post_message,
+         description: "Post a message to a Slack channel.",
+         required: [channel_id, text] }
+
+  - label: novel
+    category: unrelated
+    a: { server: filesystem, name: list_directory,
+         description: "List the contents of a directory.",
+         required: [path] }
+    b: { server: brave-search, name: brave_web_search,
+         description: "Perform a web search using the Brave Search API.",
+         required: [query] }

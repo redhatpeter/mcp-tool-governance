@@ -99,11 +99,18 @@ _All P1 items closed in this session._
     failures}` block from ingest's run summary.
 
 - [ ] **Quantitative precision/recall — grow the labeled set**
-  Scaffold complete: `apps/dup-resolver/tests/labeled_pairs.yaml` (26
-  pairs from the two demo specs), `apps/dup-resolver/eval_threshold.py`
-  (sweep + `--compare` A/B over 5 fingerprint variants), report at
-  `docs/eval/precision-recall.md`. Open until the labeled set reaches
-  30–50 pairs drawn from real-world (outside-the-repo) MCP servers.
-  At that point, re-evaluate whether to adopt the `combined` variant
-  in production `fingerprint.py` (current best on the stress set:
-  margin −0.028 vs baseline −0.076).
+  Scaffold complete: `apps/dup-resolver/tests/labeled_pairs.yaml`
+  (**42 pairs** — 26 in-repo + 16 real-world from canonical
+  `modelcontextprotocol/servers` reference repos), evaluator at
+  `apps/dup-resolver/eval_threshold.py` (sweep + `--compare` over 5
+  fingerprint variants), report at `docs/eval/precision-recall.md`.
+  **2026-05-10 finding:** expanded set drops recall at production
+  threshold 0.92 from ~21 % to 15 % (precision still 1.000) and shows
+  no fingerprint variant is perfectly separable on the broader set —
+  `combined` wins (margin −0.167) but the gain is too small to justify
+  swapping the production fingerprint. Recommendation: hold baseline,
+  introduce a two-tier verdict (hard block ≥ 0.92, soft review ≥ 0.65)
+  to recover recall without precision loss. See report for details.
+  Open until labeled set reaches 80–100 pairs (next batch should
+  emphasize same-domain-different-action and cross-vendor novels with
+  shared domain prose).

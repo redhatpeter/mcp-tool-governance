@@ -10,7 +10,7 @@ python3 eval_threshold.py --markdown ../../docs/eval/precision-recall.md
 ## Inputs
 
 - Labeled pair set: `apps/dup-resolver/tests/labeled_pairs.yaml`
-- Pairs: **26** (duplicates: 14, novels: 12)
+- Pairs: **42** (duplicates: 20, novels: 22)
 - Thresholds swept: 0.850, 0.880, 0.900, 0.920, 0.950
 - Embedding model: `text-embedding-3-large` (3072 dims, cosine)
 - Fingerprint shape: same as production ingest (domain / action / entity / description / params)
@@ -22,11 +22,11 @@ the confusion matrix at each threshold.
 
 | threshold | TP | FP | FN | TN | precision | recall |  F1   |
 |----------:|---:|---:|---:|---:|----------:|-------:|------:|
-| 0.850 | 5 | 0 | 9 | 12 | 1.000 | 0.357 | 0.526 |
-| 0.880 | 4 | 0 | 10 | 12 | 1.000 | 0.286 | 0.444 |
-| 0.900 | 4 | 0 | 10 | 12 | 1.000 | 0.286 | 0.444 |
-| 0.920 | 3 | 0 | 11 | 12 | 1.000 | 0.214 | 0.353 |
-| 0.950 | 3 | 0 | 11 | 12 | 1.000 | 0.214 | 0.353 |
+| 0.850 | 5 | 0 | 15 | 22 | 1.000 | 0.250 | 0.400 |
+| 0.880 | 4 | 0 | 16 | 22 | 1.000 | 0.200 | 0.333 |
+| 0.900 | 4 | 0 | 16 | 22 | 1.000 | 0.200 | 0.333 |
+| 0.920 | 3 | 0 | 17 | 22 | 1.000 | 0.150 | 0.261 |
+| 0.950 | 3 | 0 | 17 | 22 | 1.000 | 0.150 | 0.261 |
 
 ## Per-pair scores
 
@@ -44,30 +44,46 @@ and the production threshold should sit inside that gap.
 | 0.843 | duplicate | generic_name | `messy-mcp/lookup` | `messy-mcp/customer_lookup` |
 | 0.841 | duplicate | cross_server_dup | `governed-mcp/financeCustomerCreate` | `messy-mcp/createCustomer` |
 | 0.819 | duplicate | syntactic_dup | `messy-mcp/CustomerAPI_Final_v3` | `messy-mcp/createCustomer` |
+| 0.790 | novel | same_domain_diff_entity | `brave-search/brave_web_search` | `brave-search/brave_local_search` |
 | 0.789 | duplicate | cross_server_dup | `governed-mcp/financeCustomerSearch` | `messy-mcp/customer_search` |
+| 0.782 | duplicate | cross_server_dup | `brave-search/brave_web_search` | `google-search/google_web_search` |
 | 0.770 | duplicate | semantic_dup | `messy-mcp/customer_find` | `messy-mcp/customer_search` |
+| 0.759 | novel | same_domain_diff_entity | `memory/create_entities` | `memory/create_relations` |
 | 0.758 | novel | same_domain_diff_entity | `governed-mcp/financeCustomerGet` | `governed-mcp/financeInvoiceGet` |
+| 0.757 | novel | same_domain_diff_entity | `github/list_issues` | `github/list_pull_requests` |
 | 0.748 | novel | same_entity_diff_action | `governed-mcp/financeCustomerGet` | `governed-mcp/financeCustomerCreate` |
 | 0.747 | duplicate | semantic_dup | `messy-mcp/customer_find` | `messy-mcp/customer_lookup` |
 | 0.725 | novel | same_entity_diff_action | `governed-mcp/financeInvoiceCreate` | `governed-mcp/financeInvoiceList` |
 | 0.725 | novel | same_entity_diff_action | `governed-mcp/financeInvoiceCreate` | `governed-mcp/financeInvoiceGet` |
-| 0.723 | duplicate | semantic_dup | `messy-mcp/invoice_create_v1` | `messy-mcp/invoice_create_legacy` |
+| 0.724 | duplicate | semantic_dup | `messy-mcp/invoice_create_v1` | `messy-mcp/invoice_create_legacy` |
 | 0.715 | duplicate | cross_server_dup | `governed-mcp/financeInvoiceCreate` | `messy-mcp/invoice_create_v1` |
+| 0.695 | duplicate | cross_server_dup | `postgres/query` | `sqlite/read_query` |
 | 0.689 | novel | same_entity_diff_action | `governed-mcp/financeCustomerCreate` | `governed-mcp/financeCustomerSearch` |
 | 0.682 | duplicate | semantic_dup | `messy-mcp/customer_search` | `messy-mcp/customer_lookup` |
+| 0.665 | duplicate | cross_server_dup | `slack/slack_post_message` | `discord/send_message` |
+| 0.654 | duplicate | cross_server_dup | `filesystem/read_file` | `gdrive/gdrive_read_file` |
+| 0.651 | duplicate | cross_server_dup | `github/create_issue` | `linear/createIssue` |
+| 0.644 | novel | same_entity_diff_action | `filesystem/read_file` | `filesystem/write_file` |
+| 0.641 | novel | same_entity_diff_action | `github/create_issue` | `github/get_issue` |
 | 0.640 | novel | same_domain_diff_entity | `governed-mcp/financeCustomerGet` | `governed-mcp/financeQuoteGet` |
 | 0.610 | novel | unrelated | `messy-mcp/createCustomer` | `messy-mcp/invoice_create_v1` |
+| 0.608 | novel | same_domain_diff_entity | `slack/slack_list_channels` | `slack/slack_get_channel_history` |
+| 0.583 | novel | same_domain_diff_entity | `filesystem/read_file` | `filesystem/get_file_info` |
 | 0.582 | novel | same_domain_diff_entity | `governed-mcp/financeCustomerSearch` | `governed-mcp/financeInvoiceList` |
+| 0.546 | novel | same_entity_diff_action | `puppeteer/puppeteer_navigate` | `puppeteer/puppeteer_screenshot` |
+| 0.546 | duplicate | cross_server_dup | `fetch/fetch` | `puppeteer/puppeteer_navigate` |
 | 0.544 | novel | unrelated | `messy-mcp/customer_search` | `governed-mcp/financeInvoiceList` |
 | 0.484 | novel | same_domain_diff_entity | `governed-mcp/financePaymentApprove` | `governed-mcp/financeQuoteGet` |
 | 0.364 | novel | generic_name | `messy-mcp/list` | `governed-mcp/financeCustomerSearch` |
 | 0.358 | novel | unrelated | `governed-mcp/financeQuoteGet` | `messy-mcp/customer_lookup` |
+| 0.349 | novel | unrelated | `filesystem/list_directory` | `brave-search/brave_web_search` |
+| 0.347 | novel | unrelated | `postgres/query` | `slack/slack_post_message` |
 
 ## Separability
 
-- Lowest-scoring duplicate: **0.682**
-- Highest-scoring novel:    **0.758**
-- Margin: **-0.076** (overlapping)
+- Lowest-scoring duplicate: **0.546**
+- Highest-scoring novel:    **0.790**
+- Margin: **-0.244** (overlapping)
 
 If the margin is negative, no single threshold can perfectly
 separate the two classes on this set — pick the threshold that
@@ -75,32 +91,83 @@ best matches the cost asymmetry (false positives block PRs;
 false negatives let dups through).
 
 
-## Fingerprint variant A/B (offline)
+## Fingerprint variant comparison (2026-05-10, expanded set)
 
-`eval_threshold.py --compare` runs the same labeled set through five
-fingerprint shapes. Production `fingerprint.py` is **not** modified — these
-variants live in the eval script only, so we can compare separability
-without invalidating the index.
+Run with `python3 eval_threshold.py --compare`. Each variant is an
+alternative `fingerprint_text` shape evaluated against the same labeled
+pairs. **No code in `fingerprint.py` is changed** — these are
+hypotheses tested against the labeled set.
 
-| Variant             | F1 @ 0.85 | F1 @ 0.88 | F1 @ 0.90 | F1 @ 0.92 | F1 @ 0.95 | Sep. margin |
-|---------------------|----------:|----------:|----------:|----------:|----------:|------------:|
-| `baseline`          |     0.526 |     0.444 |     0.444 |     0.353 |     0.353 |      −0.076 |
-| `no-domain`         |     0.526 |     0.526 |     0.353 |     0.353 |     0.133 |      −0.073 |
-| `synonyms`          |     0.667 |     0.526 |     0.444 |     0.353 |     0.353 |      −0.030 |
-| `description-heavy` |     0.667 |     0.444 |     0.444 |     0.353 |     0.353 |      −0.094 |
-| `combined`          |     0.526 |     0.526 |     0.526 |     0.444 |     0.353 |  **−0.028** |
+| variant | F1 @ 0.85 | F1 @ 0.88 | F1 @ 0.90 | F1 @ 0.92 | F1 @ 0.95 | sep_margin |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| baseline (production) | 0.400 | 0.333 | 0.333 | 0.261 | 0.261 | −0.244 |
+| no-domain | 0.400 | 0.400 | 0.261 | 0.261 | 0.095 | −0.171 |
+| synonyms | 0.519 | 0.400 | 0.333 | 0.261 | 0.261 | −0.270 |
+| description-heavy | 0.519 | 0.333 | 0.333 | 0.261 | 0.261 | −0.211 |
+| **combined** | 0.462 | 0.400 | **0.400** | **0.333** | 0.261 | **−0.167** |
 
-`combined` (no-domain + synonym verb normalization + description repeated
-as `intent:`) more than halves the separability overlap (−0.076 → −0.028)
-and lifts F1 at the production 0.92 threshold from 0.353 to 0.444. Margin
-is still negative, meaning **no single threshold perfectly separates the
-two classes** even with the best variant — the hardest semantic
-duplicates (e.g. `customer_search` vs `customer_lookup`) remain below
-the easiest hard negatives (e.g. `financeCustomerGet` vs
-`financeInvoiceGet`).
+`combined` is the best variant on both separability and F1 at every
+threshold ≥ 0.90 — but the margin is still negative on the expanded
+set, meaning no single embedding-only threshold perfectly partitions
+duplicates from novels.
 
-**Decision:** keep production fingerprint as-is for now. 26 pairs is too
-narrow a basis to invalidate the index and re-ingest the corpus. Revisit
-when the labeled set reaches ≈50 real-world pairs — at that point the
-`combined` variant looks like the leading candidate, but the choice
-should be re-validated on whatever new evidence has accumulated.
+## Analysis & recommendations
+
+### What changed when the labeled set grew from 26 → 42
+
+Adding 16 real-world pairs from canonical MCP servers (filesystem,
+github, postgres/sqlite, slack/discord, brave-search, fetch/puppeteer,
+memory) **dropped recall at the production threshold (0.92) from
+≈ 21 % to 15 %** while keeping precision at 1.000. The new pairs
+exposed two failure modes that the in-repo demo specs masked:
+
+1. **Cross-vendor semantic duplicates score lower than expected.**
+   `github.create_issue` vs `linear.createIssue` lands at 0.651;
+   `slack.slack_post_message` vs `discord.send_message` at 0.665;
+   `fetch.fetch` vs `puppeteer.puppeteer_navigate` at 0.546. These are
+   genuine duplicates from a governance standpoint (an agent should
+   not see both), but the embeddings reflect the vendor-specific
+   description prose more than the shared intent.
+2. **Same-domain-different-entity novels score higher than expected.**
+   `brave_web_search` vs `brave_local_search` ranks at 0.790,
+   above several true duplicates. `github.list_issues` vs
+   `github.list_pull_requests` at 0.757. The shared domain text
+   ("Brave Search API", "GitHub repository") creates more lexical
+   overlap than the action/entity divergence can offset.
+
+### Recommendation: do not adopt `combined` in production yet
+
+Although `combined` wins on this set, the gain (F1 0.333 vs 0.261 at
+0.92) is small relative to the variance from 16 added pairs. Adopting
+it would also reset the threshold history. **Hold the production
+fingerprint at `baseline` and revisit after the labeled set reaches
+80–100 pairs.**
+
+### Recommendation: introduce a two-tier verdict at PR time
+
+The single-threshold model has hit its ceiling. Suggested follow-up
+(tracked in the L1 / L2 backlog, not implemented in this study):
+
+- **Hard block (precision-favoring)** at the current 0.92 — keep
+  today's behavior.
+- **Soft "review-recommended" tier** at ≈ 0.65 — surface the pair
+  in the PR comment as INFO, do not fail the check. This catches the
+  cross-vendor duplicates above without incurring the false-positive
+  cost of a single-threshold lower bound (which would flag every
+  same-domain-different-entity pair).
+- For pairs that score in the soft tier, the existing top-3 nearest-
+  neighbor block in `check_pr.py` already gives reviewers the context
+  they need to triage manually.
+
+### Pairs that still need to be added to reach 80–100
+
+Categories under-represented in the current 42-pair set:
+
+- More **same-domain-different-action** pairs from real servers
+  (e.g. `gdrive.search` vs `gdrive.gdrive_read_file`).
+- More **generic-name** pairs from real servers (the in-repo
+  `messy-mcp/lookup` is the only example today).
+- **True cross-vendor novels** that share domain prose
+  (e.g. two different vendors' "create_issue" tools that operate on
+  different entity models — would test whether the embedder picks up
+  the schema delta).
