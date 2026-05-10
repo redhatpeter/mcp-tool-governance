@@ -1,6 +1,7 @@
-"""Orchestration: ingest from APIM, fingerprint, embed, cluster, elect, persist."""
+"""Orchestration: ingest from APIM (or OpenAPI specs), fingerprint, embed, cluster, elect, persist."""
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -8,6 +9,7 @@ import config
 import embed
 import fingerprint as fp
 import mcp_source
+import openapi_source
 import search_client
 from cluster import cluster as run_cluster
 from elect import Candidate, elect
@@ -17,10 +19,20 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _fetch_tools() -> list[fp.ToolDescriptor]:
+    """Pick the source: 'openapi' reads spec files (no APIM creds needed),
+    'apim' (default) calls the live MCP gateway. Selected via MCP_SOURCE."""
+    src = (os.environ.get("MCP_SOURCE") or "apim").lower()
+    if src == "openapi":
+        spec_dir = os.environ.get("OPENAPI_SPEC_DIR", "apim/openapi")
+        return openapi_source.fetch_all(spec_dir)
+    return mcp_source.fetch_all()
+
+
 def run_ingest() -> dict[str, Any]:
     """Pull → fingerprint → embed → upsert (no cluster yet) → cluster from index → elect → final upsert."""
     # 1. Pull current tools/list from every MCP server
-    tools = mcp_source.fetch_all()
+    tools = _fetch_tools()
     if not tools:
         return {"status": "empty", "tools": 0}
 
@@ -92,11 +104,22 @@ def run_ingest() -> dict[str, Any]:
 
     n = search_client.upsert_documents(docs)
 
+    # 7. Reconcile deletions: anything in the index whose op no longer exists
+    #    in the live `tools/list` output is a ghost — drop it. Without this
+    #    step, renamed/removed ops linger in the index forever and future
+    #    similarity checks match against stale fingerprints.
+    desired_ids = {d["id"] for d in docs}
+    existing = search_client.all_documents(select=["id"])
+    stale_ids = [d["id"] for d in existing if d["id"] not in desired_ids]
+    deleted = search_client.delete_documents(stale_ids)
+
     return {
         "status": "ok",
         "tools": len(tools),
         "clusters": len(by_cluster),
         "indexed": n,
+        "deleted_stale": deleted,
+        "stale_ids": stale_ids,
         "collisions_dropped": collisions,
         "elections": canonical_by_cluster,
     }

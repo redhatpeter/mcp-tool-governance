@@ -1,0 +1,98 @@
+name: ingest-on-merge
+
+# Re-syncs the AI Search index with the OpenAPI specs in main whenever
+# any spec changes on main. Without this, deletions and renames leave
+# stale ghost documents behind that future PRs (similarity-check.yml)
+# would match against. See docs/todo.md "ingest-on-merge workflow".
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apim/openapi/**"
+      - "apps/dup-resolver/ingest.py"
+      - "apps/dup-resolver/openapi_source.py"
+      - "apps/dup-resolver/search_client.py"
+      - ".github/workflows/ingest-on-merge.yml"
+  workflow_dispatch:   # let an operator force a re-ingest from the UI
+
+# Don't queue parallel runs against the same branch — they'd race on
+# index writes. Latest push wins; older queued runs are cancelled.
+concurrency:
+  group: ingest-on-merge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r apps/dup-resolver/requirements.txt
+
+      - name: Check secrets availability
+        id: secrets_check
+        env:
+          AOAI_ENDPOINT: ${{ secrets.AOAI_ENDPOINT }}
+          AOAI_API_KEY: ${{ secrets.AOAI_API_KEY }}
+          SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
+          SEARCH_ADMIN_KEY: ${{ secrets.SEARCH_ADMIN_KEY }}
+        run: |
+          if [ -n "$AOAI_ENDPOINT" ] && [ -n "$AOAI_API_KEY" ] \
+             && [ -n "$SEARCH_ENDPOINT" ] && [ -n "$SEARCH_ADMIN_KEY" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "::warning::ingest-on-merge skipped — required secrets not set."
+          fi
+
+      - name: Re-ingest index from OpenAPI specs
+        if: steps.secrets_check.outputs.ready == 'true'
+        env:
+          AOAI_ENDPOINT: ${{ secrets.AOAI_ENDPOINT }}
+          AOAI_API_KEY: ${{ secrets.AOAI_API_KEY }}
+          AOAI_EMBEDDING_DEPLOYMENT: ${{ secrets.AOAI_EMBEDDING_DEPLOYMENT }}
+          SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
+          SEARCH_INDEX: ${{ secrets.SEARCH_INDEX }}
+          SEARCH_ADMIN_KEY: ${{ secrets.SEARCH_ADMIN_KEY }}
+          # Read tools from spec files in the repo, not the live APIM gateway.
+          # CI runners don't have APIM creds and shouldn't need them.
+          MCP_SOURCE: openapi
+          OPENAPI_SPEC_DIR: apim/openapi
+        shell: bash
+        run: |
+          set -o pipefail
+          : "${AOAI_EMBEDDING_DEPLOYMENT:=text-embedding-3-large}"
+          : "${SEARCH_INDEX:=mcp-tool-fingerprints}"
+          export AOAI_EMBEDDING_DEPLOYMENT SEARCH_INDEX
+          python apps/dup-resolver/ingest.py | tee /tmp/ingest-summary.json
+
+      - name: Post summary
+        if: steps.secrets_check.outputs.ready == 'true'
+        run: |
+          {
+            echo "## Index reconciliation"
+            echo
+            echo '```json'
+            cat /tmp/ingest-summary.json | python -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          slim = {
+              'status': d.get('status'),
+              'tools': d.get('tools'),
+              'clusters': d.get('clusters'),
+              'indexed': d.get('indexed'),
+              'deleted_stale': d.get('deleted_stale'),
+              'stale_ids': d.get('stale_ids'),
+              'collisions_dropped': d.get('collisions_dropped'),
+          }
+          print(json.dumps(slim, indent=2))
+          "
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY

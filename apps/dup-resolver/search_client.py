@@ -113,6 +113,15 @@ def upsert_documents(docs: list[dict]) -> int:
     return sum(1 for r in result if r.succeeded)
 
 
+def delete_documents(ids: list[str]) -> int:
+    """Delete docs by primary key. Returns count succeeded."""
+    if not ids:
+        return 0
+    sc = _search_client()
+    result = sc.delete_documents(documents=[{"id": i} for i in ids])
+    return sum(1 for r in result if r.succeeded)
+
+
 def count_documents() -> int:
     sc = _search_client()
     return sc.get_document_count()
