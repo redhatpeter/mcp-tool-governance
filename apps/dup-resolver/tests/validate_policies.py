@@ -33,21 +33,20 @@ import canonical_map
 import config
 
 
-# Cases probed against the demo data. After running ingest with the
-# OpenAPI source, messy-mcp's createCustomer / Create_Customer cluster
-# round-trips through customer_create as canonical, and invoice_create_v2
-# rewrites to invoice_create_v1. We assert that exact behavior here.
+# Cases probed against the demo data. After ingest with wire-name
+# resolution (apim_wirenames.py), canonical_map keys are APIM's wire
+# names — what the runtime tools/list response carries — not raw
+# OpenAPI operationIds. The election keeps customerCreate and
+# invoiceCreateV1 as canonical for messy-mcp's two non-trivial clusters.
 TOOLS_CALL_CASES = [
     # (server, requested_wire_name, expected_canonical_wire_name, comment)
-    ("messy-mcp", "createCustomer",   "customer_create",
-     "createCustomer is an alias of customer_create"),
-    ("messy-mcp", "Create_Customer",  "customer_create",
-     "Create_Customer is an alias of customer_create"),
-    ("messy-mcp", "customer_create",  "customer_create",
+    ("messy-mcp", "createCustomer",   "customerCreate",
+     "createCustomer is an alias of customerCreate"),
+    ("messy-mcp", "customerCreate",   "customerCreate",
      "already canonical — no rewrite"),
-    ("messy-mcp", "invoice_create_v2","invoice_create_v1",
+    ("messy-mcp", "invoiceCreateV2",  "invoiceCreateV1",
      "v2 is an alias of v1 (per the election)"),
-    ("messy-mcp", "invoice_create_v1","invoice_create_v1",
+    ("messy-mcp", "invoiceCreateV1",  "invoiceCreateV1",
      "already canonical"),
     ("governed-mcp", "financeCustomerCreate", "financeCustomerCreate",
      "singleton cluster — passes through"),
@@ -63,8 +62,7 @@ TOOLS_LIST_CASES = {
     # server: set(expected fully-qualified ids in the drop set)
     "messy-mcp": {
         "messy-mcp__createCustomer",
-        "messy-mcp__Create_Customer",
-        "messy-mcp__invoice_create_v2",
+        "messy-mcp__invoiceCreateV2",
     },
     "governed-mcp": set(),  # no governed-mcp tool is currently aliased
 }

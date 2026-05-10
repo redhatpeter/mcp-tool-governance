@@ -1,0 +1,104 @@
+name: policy-tests
+
+# L3 regression gate. Two test suites that lock in the canonical_map →
+# APIM policy contract:
+#
+#   1. test_wirename_resolution.py — guards against the operationId vs
+#      wire-name regression. Pure-Python, no Azure deps.
+#   2. validate_policies.py — replays the exact Cosmos SQL queries that
+#      the L3 policies issue and asserts the documented behavior. Needs
+#      a populated canonical_map; runs only when COSMOS_ENDPOINT is set.
+#
+# Triggered on changes to anything that affects the contract: writer,
+# policies, CLI ingest, and the tests themselves. PRs failing this job
+# should not merge — drift between the writer and the deployed policies
+# is the failure mode this exists to catch.
+
+on:
+  pull_request:
+    paths:
+      - "apps/dup-resolver/canonical_map.py"
+      - "apps/dup-resolver/openapi_source.py"
+      - "apps/dup-resolver/apim_wirenames.py"
+      - "apps/dup-resolver/ingest.py"
+      - "apps/dup-resolver/tests/**"
+      - "apim/policies/**"
+      - "apim/deploy/**"
+      - ".github/workflows/policy-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/dup-resolver/canonical_map.py"
+      - "apps/dup-resolver/openapi_source.py"
+      - "apps/dup-resolver/apim_wirenames.py"
+      - "apps/dup-resolver/ingest.py"
+      - "apps/dup-resolver/tests/**"
+      - "apim/policies/**"
+      - "apim/deploy/**"
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    # Pure-python regression guards. Always run, no Azure creds needed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r apps/dup-resolver/requirements.txt
+
+      - name: Wire-name resolution regression test
+        working-directory: apps/dup-resolver
+        run: python tests/test_wirename_resolution.py
+
+  policy-contract:
+    # Replays L3 Cosmos queries against the live canonical_map. Skipped
+    # gracefully when secrets aren't available (forks / first-time PRs)
+    # so this job never blocks merges spuriously — the unit-tests job
+    # above is the hard gate.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r apps/dup-resolver/requirements.txt
+
+      - name: Check secrets availability
+        id: secrets_check
+        env:
+          COSMOS_ENDPOINT: ${{ vars.COSMOS_ENDPOINT }}
+          COSMOS_KEY: ${{ secrets.COSMOS_KEY }}
+        run: |
+          if [ -n "$COSMOS_ENDPOINT" ] && [ -n "$COSMOS_KEY" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "::warning::policy-contract skipped — COSMOS_ENDPOINT or COSMOS_KEY not set."
+          fi
+
+      - name: Replay L3 policy queries against canonical_map
+        if: steps.secrets_check.outputs.ready == 'true'
+        env:
+          COSMOS_ENDPOINT: ${{ vars.COSMOS_ENDPOINT }}
+          COSMOS_KEY: ${{ secrets.COSMOS_KEY }}
+        # validate_policies.py imports config, which requires
+        # AOAI_ENDPOINT / SEARCH_ENDPOINT even though the test doesn't
+        # use them. Pass dummy values so the module loads.
+        run: |
+          export AOAI_ENDPOINT="https://placeholder.openai.azure.com"
+          export SEARCH_ENDPOINT="https://placeholder.search.windows.net"
+          cd apps/dup-resolver
+          python tests/validate_policies.py
