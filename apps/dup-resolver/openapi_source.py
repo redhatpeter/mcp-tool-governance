@@ -14,11 +14,15 @@ code change required.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Iterable
 
+import apim_wirenames
 from fingerprint import ToolDescriptor
+
+_log = logging.getLogger(__name__)
 
 
 # Built-in fallback used when the manifest is missing or unreadable. Keeps
@@ -77,7 +81,19 @@ def reload_server_map(spec_dir: str | Path | None = None) -> dict[str, str]:
     return SERVER_BY_FILE
 
 
-def _extract_ops(spec: dict, server: str) -> list[ToolDescriptor]:
+def _extract_ops(spec: dict, server: str,
+                 wire_map: dict[str, str] | None = None) -> list[ToolDescriptor]:
+    """Convert OpenAPI operations into ToolDescriptors.
+
+    ``wire_map`` is the authoritative ``operationId -> wire_name`` table
+    sourced from APIM (see ``apim_wirenames``). When present, each
+    descriptor's ``name`` is the wire name APIM-MCP will publish — so
+    canonical_map keys (``<server>__<name>``) match what ``tools/list``
+    returns at runtime. When the map is missing or doesn't contain a
+    given operationId, we fall back to the operationId itself and log
+    a warning so the drift is visible in CI logs.
+    """
+    wire_map = wire_map or {}
     out: list[ToolDescriptor] = []
     for path, methods in (spec.get("paths") or {}).items():
         if not isinstance(methods, dict):
@@ -88,9 +104,20 @@ def _extract_ops(spec: dict, server: str) -> list[ToolDescriptor]:
             op_id = op.get("operationId")
             if not op_id:
                 continue
+            op_id = str(op_id)
+            wire = wire_map.get(op_id)
+            if wire is None:
+                if wire_map:
+                    # Map exists but this op is missing -> spec/APIM drift.
+                    _log.warning(
+                        "openapi_source: %s operation %r has no APIM wire "
+                        "name (not deployed?); falling back to operationId",
+                        server, op_id,
+                    )
+                wire = op_id
             out.append(ToolDescriptor(
                 server=server,
-                name=str(op_id),
+                name=wire,
                 description=str(op.get("description") or op.get("summary") or ""),
                 input_schema={},  # not used by fingerprint text today
             ))
@@ -98,7 +125,13 @@ def _extract_ops(spec: dict, server: str) -> list[ToolDescriptor]:
 
 
 def fetch_all(spec_dir: str | Path = "apim/openapi") -> list[ToolDescriptor]:
-    """Read every *.json under ``spec_dir`` and emit ToolDescriptors."""
+    """Read every *.json under ``spec_dir`` and emit ToolDescriptors.
+
+    For each spec, the operation names are translated via APIM's
+    authoritative ``operationId -> wire_name`` map (one ARM call per
+    server, cached). Falls back to raw operationIds when APIM is not
+    reachable — see ``apim_wirenames`` for the env-var contract.
+    """
     base = Path(spec_dir)
     server_map = _load_server_map(base)
     out: list[ToolDescriptor] = []
@@ -113,6 +146,7 @@ def fetch_all(spec_dir: str | Path = "apim/openapi") -> list[ToolDescriptor]:
             spec = json.loads(p.read_text())
         except json.JSONDecodeError as e:
             raise RuntimeError(f"{p}: not valid JSON ({e.msg} line {e.lineno})") from e
-        out.extend(_extract_ops(spec, server))
+        wire_map = dict(apim_wirenames.wire_name_map(server))
+        out.extend(_extract_ops(spec, server, wire_map))
     return out
 

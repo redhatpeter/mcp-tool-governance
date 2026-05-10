@@ -78,6 +78,12 @@ jobs:
           COSMOS_KEY: ${{ secrets.COSMOS_KEY }}
           MCP_SOURCE: openapi
           OPENAPI_SPEC_DIR: apim/openapi
+          # APIM coordinates for wire-name resolution. ingest reads
+          # `properties.mcpTools[].name` per MCP server so canonical_map
+          # keys match the names APIM-MCP publishes at runtime.
+          APIM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          APIM_RESOURCE_GROUP: ${{ vars.APIM_RESOURCE_GROUP }}
+          APIM_SERVICE_NAME: ${{ vars.APIM_SERVICE_NAME }}
         shell: bash
         run: |
           set -o pipefail

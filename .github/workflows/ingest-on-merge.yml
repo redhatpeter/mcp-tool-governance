@@ -82,6 +82,12 @@ jobs:
           # CI runners don't have APIM creds and shouldn't need them.
           MCP_SOURCE: openapi
           OPENAPI_SPEC_DIR: apim/openapi
+          # APIM coordinates for wire-name resolution (ARM read-only).
+          # Without these, ingest falls back to raw operationIds and the
+          # canonical_map will not match runtime tools/list names.
+          APIM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          APIM_RESOURCE_GROUP: ${{ vars.APIM_RESOURCE_GROUP }}
+          APIM_SERVICE_NAME: ${{ vars.APIM_SERVICE_NAME }}
         shell: bash
         run: |
           set -o pipefail

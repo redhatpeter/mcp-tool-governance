@@ -125,12 +125,14 @@
                  the originally-requested wire name untouched. -->
             <set-variable name="canonicalTool" value="@{
               var resp = (IResponse)context.Variables.GetValueOrDefault("cosmosResp");
-              if (resp == null || resp.StatusCode >= 400)
+              if (resp == null || resp.StatusCode >= 400) {
                 return (string)context.Variables["requestedTool"];
+              }
               var body = resp.Body.As<JObject>();
               var docs = body["Documents"] as JArray;
-              if (docs == null || docs.Count == 0)
+              if (docs == null || docs.Count == 0) {
                 return (string)context.Variables["requestedTool"];
+              }
               return docs[0]?.ToString() ?? (string)context.Variables["requestedTool"];
             }" />
 

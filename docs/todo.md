@@ -30,37 +30,25 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ L3 step 2 — `tools/list` filter policy + writer schema enrichment (primary, aliases)
 - ✅ L3 step 3 — `tools/call` rewrite for unified schema + Python validation harness
 - ✅ L3 step 4 — `COSMOS_ENDPOINT`/`COSMOS_KEY` wired into ingest CI
+- ✅ OIDC migration for AOAI — forced by `CognitiveServices_LocalAuth_Modify` policy on `common-open-ai`. Workflows now use `azure/login@v2` + federated credential. AOAI key auth retired in CI.
+- ✅ `daily-ingest` end-to-end smoke (run [25631367436](https://github.com/redhatpeter/mcp-tool-governance/actions/runs/25631367436))
 
 ## P0 — operational gaps that will bite us next demo
 
-- [ ] **OIDC migration for CI → Azure**
-  CI uses `AOAI_API_KEY` + `SEARCH_ADMIN_KEY` repo secrets. Azure Policy
-  `CognitiveServices_LocalAuth_Modify` will eventually re-disable key
-  auth on `common-open-ai`, breaking the gate. Migrate to GitHub OIDC →
-  federated credential → AAD-only auth (`DefaultAzureCredential` already
-  supported in `apps/dup-resolver/config.py`). Steps:
-  1. Create Entra app registration + federated credential bound to
-     `repo:redhatpeter/mcp-tool-governance:ref:refs/heads/main` and
-     PR refs (`pull_request`).
-  2. Grant `Cognitive Services OpenAI User` on the AOAI account and
-     `Search Index Data Contributor` + `Search Service Contributor` on
-     the search service.
-  3. Add `permissions: id-token: write` and `azure/login@v2` to all
-     three workflows; drop the secrets, keep only `AZURE_CLIENT_ID` /
-     `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` as repo variables.
-  4. Verify by re-running each workflow with key auth disabled.
-
-  Currently deferred — owner has key auth re-enabled and is willing to
-  keep it that way. Revisit when Azure Policy enforcement tightens.
+_All P0 items closed in this session._
 
 ## P1 — gaps that would improve operability
 
-- [ ] **Trigger and observe a `daily-ingest` cron run end-to-end**
-  Workflow lands today; first scheduled fire is 04:17 UTC tomorrow.
-  Validate with `gh workflow run daily-ingest.yml` once, confirm
-  reconciliation summary renders, and document the link in next
-  session's handoff.
-
+- [ ] **Deploy L3 policies to APIM**
+  Both policies are authored, locally schema-validated, but not
+  attached to any APIM API. Attach
+  `apim/policies/canonical-rewrite.policy.xml` (inbound) and
+  `apim/policies/tools-list-filter.policy.xml` (outbound) to the
+  `governed-mcp` and `messy-mcp` APIs. Replace placeholders
+  (`<tenant-id>`, `api://mcp-gateway`, `<server-name>`,
+  `cosmoslab82658`). Verify by calling each through the gateway and
+  inspecting `x-mcp-canonical-rewrite` / `x-mcp-tools-filtered`
+  response headers.
 ## P2 — polish
 
 _All P2 items complete in this session. Track new polish items here as

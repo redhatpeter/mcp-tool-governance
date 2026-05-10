@@ -110,13 +110,13 @@
 
                 <set-variable name="aliasDropCsv" value="@{
                   var resp = (IResponse)context.Variables.GetValueOrDefault("cosmosResp");
-                  if (resp == null || resp.StatusCode >= 400) return "";
+                  if (resp == null || resp.StatusCode >= 400) { return ""; }
                   var docs = resp.Body.As<JObject>()["Documents"] as JArray;
-                  if (docs == null) return "";
+                  if (docs == null) { return ""; }
                   var ids = new System.Collections.Generic.List<string>();
                   foreach (var aliasArr in docs) {
                     if (aliasArr is JArray arr) {
-                      foreach (var a in arr) ids.Add(a.ToString());
+                      foreach (var a in arr) { ids.Add(a.ToString()); }
                     }
                   }
                   return string.Join(",", ids);
@@ -135,7 +135,7 @@
                  to match the doc_id format L2 wrote. -->
             <set-variable name="droppedCount" value="@{
               var dropCsv = (string)context.Variables["aliasDropCsv"];
-              if (string.IsNullOrEmpty(dropCsv)) return 0;
+              if (string.IsNullOrEmpty(dropCsv)) { return 0; }
               var dropSet = new System.Collections.Generic.HashSet<string>(
                   dropCsv.Split(','), System.StringComparer.Ordinal);
 
@@ -151,18 +151,23 @@
 
               var resp = (JObject)context.Variables["rpcResp"];
               ((JObject)resp["result"])["tools"] = kept;
-              context.Variables["rpcResp"] = resp;
               return dropped;
             }" />
 
-            <choose>
-              <when condition="@(((int)context.Variables["droppedCount"]) > 0)">
-                <set-body>@(((JObject)context.Variables["rpcResp"]).ToString())</set-body>
-                <set-header name="x-mcp-tools-filtered" exists-action="override">
-                  <value>@(((int)context.Variables["droppedCount"]).ToString())</value>
-                </set-header>
-              </when>
-            </choose>
+            <!-- Always rewrite the body. We've already consumed the body
+                 stream via .As<JObject>(preserveContent: true); a downstream
+                 SSE/streaming pass-through can choke on the half-read buffer
+                 when no drops are made. Re-emitting the (possibly unchanged)
+                 JSON tree avoids that. -->
+            <!-- Always rewrite the body. We've already consumed the body
+                 stream via .As<JObject>(preserveContent: true); a downstream
+                 SSE/streaming pass-through can choke on the half-read buffer
+                 when no drops are made. Re-emitting the (possibly unchanged)
+                 JSON tree avoids that. -->
+            <set-body>@(((JObject)context.Variables["rpcResp"]).ToString())</set-body>
+            <set-header name="x-mcp-tools-filtered" exists-action="override">
+              <value>@(((int)context.Variables["droppedCount"]).ToString())</value>
+            </set-header>
 
           </when>
         </choose>

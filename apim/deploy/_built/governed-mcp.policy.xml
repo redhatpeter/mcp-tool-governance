@@ -1,0 +1,207 @@
+<policies>
+  <inbound>
+    <base />
+<set-variable name="rpcBody" value="@(context.Request.Body.As<JObject>(preserveContent: true))" />
+    <set-variable name="rpcMethod" value="@(((JObject)context.Variables["rpcBody"])["method"]?.ToString())" />
+
+    <choose>
+      <when condition="@((string)context.Variables["rpcMethod"] == "tools/call")">
+
+        <set-variable name="requestedTool"
+                      value="@(((JObject)context.Variables["rpcBody"])["params"]?["name"]?.ToString())" />
+        <set-variable name="requestedFqid"
+                      value="@("governed-mcp__" + (string)context.Variables["requestedTool"])" />
+
+        <cache-lookup-value
+            key="@("canon:" + (string)context.Variables["requestedFqid"])"
+            variable-name="canonicalTool" />
+
+        <choose>
+          <when condition="@(!context.Variables.ContainsKey("canonicalTool"))">
+            <authentication-managed-identity resource="https://cosmos.azure.com"
+                                             output-token-variable-name="cosmosAadToken" />
+            <send-request mode="new" response-variable-name="cosmosResp"
+                          timeout="2" ignore-error="true">
+              <set-url>@($"https://cosmoslab82658.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs")</set-url>
+              <set-method>POST</set-method>
+              <set-header name="Authorization" exists-action="override">
+                <value>@("type=aad&ver=1.0&sig=" + (string)context.Variables["cosmosAadToken"])</value>
+              </set-header>
+              <set-header name="x-ms-version" exists-action="override">
+                <value>2018-12-31</value>
+              </set-header>
+              <set-header name="x-ms-documentdb-isquery" exists-action="override">
+                <value>true</value>
+              </set-header>
+              <set-header name="x-ms-documentdb-query-enablecrosspartition" exists-action="override">
+                <value>true</value>
+              </set-header>
+              <set-header name="Content-Type" exists-action="override">
+                <value>application/query+json</value>
+              </set-header>
+              <set-body>@{
+                var q = new JObject(
+                  new JProperty("query",
+                    "SELECT VALUE c.primary.name FROM c WHERE c.id = @id OR ARRAY_CONTAINS(c.aliases, @id)"),
+                  new JProperty("parameters", new JArray(
+                    new JObject(new JProperty("name", "@id"),
+                                new JProperty("value", (string)context.Variables["requestedFqid"]))
+                  ))
+                );
+                return q.ToString();
+              }</set-body>
+            </send-request>
+
+            <set-variable name="canonicalTool" value="@{
+              var resp = (IResponse)context.Variables.GetValueOrDefault("cosmosResp");
+              if (resp == null || resp.StatusCode >= 400) {
+                return (string)context.Variables["requestedTool"];
+              }
+              var body = resp.Body.As<JObject>();
+              var docs = body["Documents"] as JArray;
+              if (docs == null || docs.Count == 0) {
+                return (string)context.Variables["requestedTool"];
+              }
+              return docs[0]?.ToString() ?? (string)context.Variables["requestedTool"];
+            }" />
+
+            <cache-store-value
+                key="@("canon:" + (string)context.Variables["requestedFqid"])"
+                value="@((string)context.Variables["canonicalTool"])"
+                duration="60" />
+          </when>
+        </choose>
+
+        <choose>
+          <when condition="@((string)context.Variables["canonicalTool"] != (string)context.Variables["requestedTool"])">
+            <set-body>@{
+              var body = (JObject)context.Variables["rpcBody"];
+              body["params"]["name"] = (string)context.Variables["canonicalTool"];
+              return body.ToString();
+            }</set-body>
+            <set-header name="x-mcp-canonical-rewrite" exists-action="override">
+              <value>@($"{context.Variables["requestedTool"]} -> {context.Variables["canonicalTool"]}")</value>
+            </set-header>
+          </when>
+        </choose>
+
+      </when>
+    </choose>
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+<choose>
+      <when condition="@(context.Response.StatusCode >= 200 && context.Response.StatusCode < 300)">
+
+        <set-variable name="rpcResp" value="@(context.Response.Body.As<JObject>(preserveContent: true))" />
+        <set-variable name="rpcResult" value="@(((JObject)context.Variables["rpcResp"])["result"]?["tools"] as JArray)" />
+
+        <choose>
+          <when condition="@(((JArray)context.Variables.GetValueOrDefault("rpcResult")) != null)">
+
+            <cache-lookup-value
+                key="@("aliasdrop:" + "governed-mcp")"
+                variable-name="aliasDropCsv" />
+
+            <choose>
+              <when condition="@(!context.Variables.ContainsKey("aliasDropCsv"))">
+                <authentication-managed-identity
+                    resource="https://cosmos.azure.com"
+                    output-token-variable-name="cosmosAadToken" />
+
+                <send-request mode="new" response-variable-name="cosmosResp"
+                              timeout="2" ignore-error="true">
+                  <set-url>@($"https://cosmoslab82658.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs")</set-url>
+                  <set-method>POST</set-method>
+                  <set-header name="Authorization" exists-action="override">
+                    <value>@("type=aad&ver=1.0&sig=" + (string)context.Variables["cosmosAadToken"])</value>
+                  </set-header>
+                  <set-header name="x-ms-version" exists-action="override">
+                    <value>2018-12-31</value>
+                  </set-header>
+                  <set-header name="x-ms-documentdb-isquery" exists-action="override">
+                    <value>true</value>
+                  </set-header>
+                  <set-header name="x-ms-documentdb-query-enablecrosspartition" exists-action="override">
+                    <value>true</value>
+                  </set-header>
+                  <set-header name="Content-Type" exists-action="override">
+                    <value>application/query+json</value>
+                  </set-header>
+                  <set-body>@{
+                    var q = new JObject(
+                      new JProperty("query",
+                        "SELECT VALUE c.aliases FROM c WHERE c.canonical_server = @s OR EXISTS(SELECT VALUE m FROM m IN c.members WHERE m.server = @s)"),
+                      new JProperty("parameters", new JArray(
+                        new JObject(new JProperty("name", "@s"), new JProperty("value", "governed-mcp"))
+                      ))
+                    );
+                    return q.ToString();
+                  }</set-body>
+                </send-request>
+
+                <set-variable name="aliasDropCsv" value="@{
+                  var resp = (IResponse)context.Variables.GetValueOrDefault("cosmosResp");
+                  if (resp == null || resp.StatusCode >= 400) { return ""; }
+                  var docs = resp.Body.As<JObject>()["Documents"] as JArray;
+                  if (docs == null) { return ""; }
+                  var ids = new System.Collections.Generic.List<string>();
+                  foreach (var aliasArr in docs) {
+                    if (aliasArr is JArray arr) {
+                      foreach (var a in arr) { ids.Add(a.ToString()); }
+                    }
+                  }
+                  return string.Join(",", ids);
+                }" />
+
+                <cache-store-value
+                    key="@("aliasdrop:" + "governed-mcp")"
+                    value="@((string)context.Variables["aliasDropCsv"])"
+                    duration="60" />
+              </when>
+            </choose>
+
+            <set-variable name="droppedCount" value="@{
+              var dropCsv = (string)context.Variables["aliasDropCsv"];
+              if (string.IsNullOrEmpty(dropCsv)) { return 0; }
+              var dropSet = new System.Collections.Generic.HashSet<string>(
+                  dropCsv.Split(','), System.StringComparer.Ordinal);
+
+              var tools = (JArray)context.Variables["rpcResult"];
+              var kept = new JArray();
+              int dropped = 0;
+              foreach (var t in tools) {
+                var name = t["name"]?.ToString() ?? "";
+                var fqid = "governed-mcp__" + name;
+                if (dropSet.Contains(fqid)) { dropped++; continue; }
+                kept.Add(t);
+              }
+
+              var resp = (JObject)context.Variables["rpcResp"];
+              ((JObject)resp["result"])["tools"] = kept;
+              return dropped;
+            }" />
+
+            <set-body>@(((JObject)context.Variables["rpcResp"]).ToString())</set-body>
+            <set-header name="x-mcp-tools-filtered" exists-action="override">
+              <value>@(((int)context.Variables["droppedCount"]).ToString())</value>
+            </set-header>
+            <set-header name="x-mcp-tools-kept" exists-action="override">
+              <value>@(((JArray)((JObject)((JObject)context.Variables["rpcResp"])["result"])["tools"]).Count.ToString())</value>
+            </set-header>
+            <set-header name="x-mcp-aliasdrop-csv" exists-action="override">
+              <value>@((string)context.Variables["aliasDropCsv"])</value>
+            </set-header>
+
+          </when>
+        </choose>
+      </when>
+    </choose>
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
