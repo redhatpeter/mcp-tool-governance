@@ -22,6 +22,7 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ Top-3 nearest neighbors as collapsible `<details>` per non-OK row
 - ✅ Threshold sweep table per non-OK row (0.85 / 0.88 / 0.92 / 0.95 + current)
 - ✅ Spec-source manifest (`apim/openapi/_servers.yaml`) replaces hard-coded `SERVER_BY_FILE`
+- ✅ Lint integration with manifest — new rule **E007** (spec stem must be declared)
 
 ## P0 — operational gaps that will bite us next demo
 
@@ -80,9 +81,8 @@ they surface._
   choice with a number, not a vibe — and inform a future "auto-tune
   threshold per organization" feature.
 
-- [ ] **Spec source plurality**
-  Today this is **partially done** — see
-  `apim/openapi/_servers.yaml`. The remaining piece is hooking the
-  manifest into `tools-cli/lint.py` so unknown stems either error
-  loudly or are explicitly listed as `unmanaged: true`. Until then,
-  unknown stems are silently skipped by the resolver.
+- [ ] **Spec source plurality** — **complete**. Manifest at
+  `apim/openapi/_servers.yaml` is now the source of truth, and
+  `tools-cli/lint.py` enforces it via E007 (unknown stems fail the
+  PR). Leave this entry until a new server is added in anger to
+  confirm the workflow.

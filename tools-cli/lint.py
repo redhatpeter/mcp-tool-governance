@@ -26,6 +26,8 @@ Rules (E* = error, W* = warning):
   E005  Action token (last camelCase token) is not in the approved verb list.
   E006  Summary contains a banned legacy/version marker (v1, v2, final, legacy,
         new, old).
+  E007  Spec filename stem not declared in apim/openapi/_servers.yaml — every
+        spec must opt-in to ingestion via the manifest.
   W101  Description missing or shorter than 40 chars (rich descriptions
         materially improve LLM tool-pick correctness — see eval results).
   W102  Description does not contain "USE WHEN" or "DO NOT USE" guidance.
@@ -52,6 +54,7 @@ from typing import Iterable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_GLOB = "apim/openapi/*.json"
+MANIFEST_PATH = REPO_ROOT / "apim" / "openapi" / "_servers.yaml"
 
 DOMAINS = [d.strip() for d in os.environ.get(
     "LINT_DOMAINS", "finance,customer,hr,sales,operations"
@@ -152,9 +155,50 @@ def iter_operations(spec_path: Path) -> Iterable[Operation]:
             )
 
 
-def lint_spec(spec_path: Path) -> list[Finding]:
+def _read_servers_manifest() -> set[str] | None:
+    """Return the set of declared filename stems from apim/openapi/_servers.yaml,
+    or None if the manifest is missing (in which case E007 is skipped, matching
+    openapi_source.py's fallback semantics).
+
+    Stdlib-only mini-parser for the manifest's flat `key: value` shape under
+    `servers:`. Avoids forcing PyYAML into the linter's runtime, which is a
+    deliberate constraint (lint runs on every PR; minimal deps wins)."""
+    if not MANIFEST_PATH.exists():
+        return None
+    stems: set[str] = set()
+    in_servers = False
+    for raw_line in MANIFEST_PATH.read_text().splitlines():
+        line = raw_line.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        if not line.startswith((" ", "\t")):
+            in_servers = line.strip().rstrip(":") == "servers"
+            continue
+        if not in_servers:
+            continue
+        stripped = line.strip()
+        if ":" not in stripped:
+            continue
+        key = stripped.split(":", 1)[0].strip().strip("'\"")
+        if key:
+            stems.add(key)
+    return stems
+
+
+def lint_spec(spec_path: Path, manifest_stems: set[str] | None = None) -> list[Finding]:
     findings: list[Finding] = []
     seen_wire: dict[str, str] = {}     # wire_name -> first op_path that produced it
+
+    # E007: spec filename stem not declared in apim/openapi/_servers.yaml.
+    # Whole-spec error (no operation context). Skipped if the manifest is
+    # missing entirely — that case is handled by openapi_source.py's fallback
+    # behavior. When the manifest exists, every spec must opt in.
+    if manifest_stems is not None and spec_path.stem not in manifest_stems:
+        findings.append(Finding(
+            "E", "E007", spec_path.name, "<file>", "", "",
+            f"spec stem '{spec_path.stem}' is not declared in apim/openapi/_servers.yaml — "
+            f"add a 'servers:' entry mapping it to an MCP server name, or remove the spec"
+        ))
 
     try:
         ops = list(iter_operations(spec_path))
@@ -289,11 +333,12 @@ def main() -> int:
         return 2
 
     all_findings: list[Finding] = []
+    manifest_stems = _read_servers_manifest()
     for s in specs:
         if not s.exists():
             print(f"not found: {s}", file=sys.stderr)
             return 2
-        all_findings.extend(lint_spec(s))
+        all_findings.extend(lint_spec(s, manifest_stems=manifest_stems))
 
     if args.no_warn:
         all_findings = [f for f in all_findings if f.severity == "E"]
