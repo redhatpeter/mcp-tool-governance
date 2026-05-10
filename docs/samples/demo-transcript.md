@@ -212,3 +212,116 @@ The output below is byte-for-byte what the script produces on a healthy run
  Demo complete. Questions? 
 =================================================================
 ```
+
+---
+
+## Addendum — what shipped 2026-05-10
+
+The transcript above (captured 2026-05-09) covers Acts 1–4 + the eval bonus.
+Three additions landed the next day; **add these slides to the deck** rather
+than re-running the script.
+
+### A. L3 actually deployed to APIM (Acts 3 + 4 are now live, not staged)
+
+Both `governed-mcp` and `messy-mcp` now have the merged `tools-list-filter` +
+`canonical-rewrite` policies attached
+([deploy script](../../apim/deploy/deploy_l3_policies.py)). Captured live
+against `https://apimopenai99.azure-api.net` on 2026-05-10:
+
+```text
+$ curl -X POST .../messy-mcp/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+HTTP/1.1 200 OK
+x-mcp-tools-filtered: 3            ← three alias tools dropped from the response
+# Returned 10 tools (none of: createCustomer, Create_Customer, invoiceCreateV2)
+# Tools surfaced to the LLM:
+#   create, customerApiFinalV3, customerCreate, customerFind, customerLookup,
+#   customerSearch, invoiceCreateLegacy, invoiceCreateV1, list, lookup
+
+$ curl -X POST .../messy-mcp/mcp -d '{...,"method":"tools/call","params":{"name":"createCustomer",...}}'
+HTTP/1.1 200 OK
+x-mcp-canonical-rewrite: createCustomer -> customerCreate
+
+$ curl -X POST .../messy-mcp/mcp -d '{...,"method":"tools/call","params":{"name":"invoiceCreateV2",...}}'
+HTTP/1.1 200 OK
+x-mcp-canonical-rewrite: invoiceCreateV2 -> invoiceCreateV1
+
+$ curl -X POST .../governed-mcp/mcp -d '{"jsonrpc":"2.0","id":4,"method":"tools/list"}'
+HTTP/1.1 200 OK
+x-mcp-tools-filtered: 0            ← no aliases on the governed surface (clean spec)
+# Returned 8 tools.
+```
+
+**What this proves end-to-end:**
+- `tools/list` filter actively removes alias tools so they never reach the LLM.
+- `tools/call` accepts an alias and the gateway substitutes the canonical
+  name before dispatch — observable via the `x-mcp-canonical-rewrite` header.
+- Cosmos `governance.mcp-canonical-map` is the live source of truth (cached
+  60 s in APIM, refreshed by `ingest-on-merge.yml` + `daily-ingest.yml`).
+- Wire-name resolution uses APIM's own `properties.mcpTools[]` (commit
+  `8196155`), so canonical_map keys exactly match what `tools/list` emits.
+
+### B. Two-tier verdict in `check_pr.py` — the new REVIEW band
+
+The expanded precision/recall study
+([`docs/eval/precision-recall.md`](../eval/precision-recall.md), 42 labeled
+pairs) showed real-world cross-vendor semantic duplicates score in
+`[0.55, 0.80]` — below the hard-block threshold but worth a reviewer
+glance. The PR comment now has a 4-tier ladder:
+
+| Verdict | Score range | Effect |
+| --- | --- | --- |
+| 🛑 DUPLICATE | `≥ CLUSTER_THRESHOLD` | hard block, fails CI |
+| ⚠️ WARN | `[threshold − 0.05, threshold)` | reviewer attention, passes |
+| 🔍 REVIEW | `[REVIEW_THRESHOLD, threshold − 0.05)` | sanity-check, passes (NEW) |
+| ✅ OK | `< REVIEW_THRESHOLD` | clean |
+| ℹ️ INFO | rename detected | downgraded from DUPLICATE |
+
+Real-world pairs that NOW surface in REVIEW (previously silent OK):
+
+```text
+github.create_issue         vs linear.createIssue          → 0.651  🔍 REVIEW
+slack.slack_post_message    vs discord.send_message        → 0.665  🔍 REVIEW
+postgres.query              vs sqlite.read_query           → 0.695  🔍 REVIEW
+brave_web_search            vs google_web_search           → 0.782  🔍 REVIEW
+```
+
+Defaults: `CLUSTER_THRESHOLD=0.92`, `REVIEW_THRESHOLD=0.65`. Both
+env-overridable via repo variables. Regression test
+[`tests/test_verdict_tiers.py`](../../apps/dup-resolver/tests/test_verdict_tiers.py)
+locks all four band boundaries plus the real-world examples.
+
+### C. CI gate for the L3 contract
+
+[`.github/workflows/policy-tests.yml`](../../.github/workflows/policy-tests.yml)
+now runs on every PR + push that touches the writer, the policies, or the
+deploy script. Two jobs:
+
+- **`unit-tests`** — `test_wirename_resolution.py` (3 tests, no Azure deps)
+  + `test_verdict_tiers.py` (3 tests, no Azure deps).
+- **`policy-contract`** — replays the exact Cosmos SQL the L3 policies
+  issue against the live `mcp-canonical-map` container; 8 assertions
+  (3 alias resolutions, 1 already-canonical, 1 singleton, 1 unknown
+  fail-open, 2 `tools/list` drop-set cases). Skips gracefully when
+  Cosmos secrets aren't available so forks don't see spurious failures.
+
+Latest green run:
+[25637828620](https://github.com/redhatpeter/mcp-tool-governance/actions/runs/25637828620).
+
+### D. Known external blocker — APIM-MCP body forwarding
+
+`tools/call` requests reach the L3 rewrite policy correctly (proven by the
+`x-mcp-canonical-rewrite` header above), but **APIM-MCP itself currently
+forwards only the last property's raw scalar value as the backend HTTP
+body** instead of constructing a JSON object from `params.arguments`.
+Backend therefore returns 422 `json_invalid` on every `tools/call`.
+
+This is a regression of the fix shipped in
+[`release-service-2026-03`](https://github.com/Azure/API-Management/releases/tag/release-service-2026-03)
+("Resolved issue where MCP POST request bodies were not forwarded to
+backend APIs"), tracked publicly at
+[Azure-Samples/AI-Gateway#315](https://github.com/Azure-Samples/AI-Gateway/issues/315).
+
+**Demo guidance:** the governance layer is provably innocent (reproduces
+with all custom policies stripped). Show the `x-mcp-canonical-rewrite`
+header — that's the L3 evidence — and call out the backend 422 as a
+separate APIM-MCP product issue that's already in MS triage.
