@@ -265,3 +265,27 @@ a file doesn't silently change the indexed corpus.
 If the manifest is missing or PyYAML is unavailable (e.g. early-stage
 tests), the loader falls back to a built-in default that matches this
 repo's two stems. Production deployments should always author the file.
+
+## Threshold tuning — precision/recall study
+
+The 0.92 threshold (`CLUSTER_THRESHOLD` repo variable) is defended by a
+labeled pair set at [`tests/labeled_pairs.yaml`](tests/labeled_pairs.yaml)
+and an evaluator that sweeps thresholds and reports precision / recall /
+F1 for the **duplicate** class:
+
+```bash
+cd apps/dup-resolver && source .venv/bin/activate
+python3 eval_threshold.py                                            # console
+python3 eval_threshold.py --markdown ../../docs/eval/precision-recall.md
+python3 eval_threshold.py --thresholds 0.85,0.88,0.90,0.92,0.95
+```
+
+The current pair set is small (~25 hand-curated pairs from the two demo
+specs) and is intentionally **stress-loaded** with hard cases —
+syntactic/semantic/cross-server duplicates plus hard negatives like
+"same domain different entity" and "same entity different action". Read
+[`docs/eval/precision-recall.md`](../../docs/eval/precision-recall.md)
+for the latest numbers; the headline is that L2 is high-precision
+(false positives are rare at any threshold ≥ 0.85) and lower-recall —
+which is exactly why L3 exists. Grow the labeled set whenever a real
+PR exposes a new failure mode.

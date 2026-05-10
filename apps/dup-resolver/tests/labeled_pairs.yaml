@@ -1,0 +1,240 @@
+# Labeled pair set for the threshold precision/recall study.
+#
+# Each entry is two tools (server + name + description + optional required
+# params) plus a `label` of either:
+#   - duplicate: a human reviewer would say "these are the same operation,
+#     pick one". Includes both syntactic (same op, different naming) and
+#     semantic (same intent, different name + params) cases.
+#   - novel:    distinct operations that should NOT cluster. Includes the
+#     hard cases (same domain different entity, same entity different
+#     action) so we can see where the threshold breaks down.
+#
+# All tools are drawn from the two demo specs in apim/openapi/ so the
+# fingerprints exactly match what production ingest sees. To add real-world
+# pairs, append entries with the same shape — server name is opaque to the
+# evaluator (it is not part of the fingerprint text).
+#
+# Conventions:
+# - `notes` is freeform; no code reads it.
+# - `category` is one of: syntactic_dup, semantic_dup, cross_server_dup,
+#                         same_domain_diff_entity, same_entity_diff_action,
+#                         unrelated, generic_name. Used only for breakdown
+#                         reporting.
+
+pairs:
+
+  # ---- True duplicates: syntactic (same op, different naming) ----
+  - label: duplicate
+    category: syntactic_dup
+    notes: same op, four different naming conventions
+    a: { server: messy-mcp, name: createCustomer,
+         description: "Create a customer." }
+    b: { server: messy-mcp, name: Create_Customer,
+         description: "Create a customer." }
+
+  - label: duplicate
+    category: syntactic_dup
+    a: { server: messy-mcp, name: createCustomer,
+         description: "Create a customer." }
+    b: { server: messy-mcp, name: customer_create,
+         description: "Create a customer." }
+
+  - label: duplicate
+    category: syntactic_dup
+    a: { server: messy-mcp, name: Create_Customer,
+         description: "Create a customer." }
+    b: { server: messy-mcp, name: customer_create,
+         description: "Create a customer." }
+
+  - label: duplicate
+    category: syntactic_dup
+    notes: legacy versioned name; same intent
+    a: { server: messy-mcp, name: CustomerAPI_Final_v3,
+         description: "Create a customer." }
+    b: { server: messy-mcp, name: createCustomer,
+         description: "Create a customer." }
+
+  # ---- True duplicates: semantic (different name + params) ----
+  - label: duplicate
+    category: semantic_dup
+    notes: search/find/lookup all do the same thing
+    a: { server: messy-mcp, name: customer_find,
+         description: "Find customers matching a term.",
+         required: [q] }
+    b: { server: messy-mcp, name: customer_search,
+         description: "Search the customer list.",
+         required: [query] }
+
+  - label: duplicate
+    category: semantic_dup
+    a: { server: messy-mcp, name: customer_find,
+         description: "Find customers matching a term.",
+         required: [q] }
+    b: { server: messy-mcp, name: customer_lookup,
+         description: "Look up a customer by partial match.",
+         required: [term] }
+
+  - label: duplicate
+    category: semantic_dup
+    a: { server: messy-mcp, name: customer_search,
+         description: "Search the customer list.",
+         required: [query] }
+    b: { server: messy-mcp, name: customer_lookup,
+         description: "Look up a customer by partial match.",
+         required: [term] }
+
+  - label: duplicate
+    category: semantic_dup
+    notes: same operation, three incompatible param schemas
+    a: { server: messy-mcp, name: invoice_create_v1,
+         description: "Create an invoice (v1 schema).",
+         required: [customer_id, amount] }
+    b: { server: messy-mcp, name: invoice_create_v2,
+         description: "Create an invoice (v2 schema).",
+         required: [customer_id, amount, currency, due_date] }
+
+  - label: duplicate
+    category: semantic_dup
+    a: { server: messy-mcp, name: invoice_create_v1,
+         description: "Create an invoice (v1 schema).",
+         required: [customer_id, amount] }
+    b: { server: messy-mcp, name: invoice_create_legacy,
+         description: "Create an invoice (legacy schema).",
+         required: [cust, total, ccy] }
+
+  # ---- True duplicates: cross-server (governed vs messy) ----
+  - label: duplicate
+    category: cross_server_dup
+    notes: governed-mcp tool collides with a messy-mcp tool
+    a: { server: governed-mcp, name: financeCustomerCreate,
+         description: "Create a customer." }
+    b: { server: messy-mcp, name: createCustomer,
+         description: "Create a customer." }
+
+  - label: duplicate
+    category: cross_server_dup
+    a: { server: governed-mcp, name: financeCustomerSearch,
+         description: "Search the customer directory by query string." }
+    b: { server: messy-mcp, name: customer_search,
+         description: "Search the customer list.",
+         required: [query] }
+
+  - label: duplicate
+    category: cross_server_dup
+    a: { server: governed-mcp, name: financeInvoiceCreate,
+         description: "Create an invoice for a customer." }
+    b: { server: messy-mcp, name: invoice_create_v1,
+         description: "Create an invoice (v1 schema).",
+         required: [customer_id, amount] }
+
+  # ---- True novels: same domain, different entity ----
+  - label: novel
+    category: same_domain_diff_entity
+    a: { server: governed-mcp, name: financeCustomerGet,
+         description: "Get a customer by id." }
+    b: { server: governed-mcp, name: financeInvoiceGet,
+         description: "Get an invoice by id." }
+
+  - label: novel
+    category: same_domain_diff_entity
+    a: { server: governed-mcp, name: financeCustomerSearch,
+         description: "Search the customer directory by query string." }
+    b: { server: governed-mcp, name: financeInvoiceList,
+         description: "List invoices for a customer or date range." }
+
+  - label: novel
+    category: same_domain_diff_entity
+    a: { server: governed-mcp, name: financePaymentApprove,
+         description: "Approve a pending payment." }
+    b: { server: governed-mcp, name: financeQuoteGet,
+         description: "Get a price quote for a service." }
+
+  - label: novel
+    category: same_domain_diff_entity
+    a: { server: governed-mcp, name: financeCustomerGet,
+         description: "Get a customer by id." }
+    b: { server: governed-mcp, name: financeQuoteGet,
+         description: "Get a price quote for a service." }
+
+  # ---- True novels: same entity, different action ----
+  - label: novel
+    category: same_entity_diff_action
+    a: { server: governed-mcp, name: financeCustomerGet,
+         description: "Get a customer by id." }
+    b: { server: governed-mcp, name: financeCustomerCreate,
+         description: "Create a customer." }
+
+  - label: novel
+    category: same_entity_diff_action
+    a: { server: governed-mcp, name: financeInvoiceCreate,
+         description: "Create an invoice for a customer." }
+    b: { server: governed-mcp, name: financeInvoiceGet,
+         description: "Get an invoice by id." }
+
+  - label: novel
+    category: same_entity_diff_action
+    a: { server: governed-mcp, name: financeInvoiceCreate,
+         description: "Create an invoice for a customer." }
+    b: { server: governed-mcp, name: financeInvoiceList,
+         description: "List invoices for a customer or date range." }
+
+  - label: novel
+    category: same_entity_diff_action
+    a: { server: governed-mcp, name: financeCustomerCreate,
+         description: "Create a customer." }
+    b: { server: governed-mcp, name: financeCustomerSearch,
+         description: "Search the customer directory by query string." }
+
+  # ---- True novels: completely unrelated ----
+  - label: novel
+    category: unrelated
+    a: { server: governed-mcp, name: financeQuoteGet,
+         description: "Get a price quote for a service." }
+    b: { server: messy-mcp, name: customer_lookup,
+         description: "Look up a customer by partial match.",
+         required: [term] }
+
+  - label: novel
+    category: unrelated
+    a: { server: messy-mcp, name: customer_search,
+         description: "Search the customer list.",
+         required: [query] }
+    b: { server: governed-mcp, name: financeInvoiceList,
+         description: "List invoices for a customer or date range." }
+
+  - label: novel
+    category: unrelated
+    a: { server: messy-mcp, name: createCustomer,
+         description: "Create a customer." }
+    b: { server: messy-mcp, name: invoice_create_v1,
+         description: "Create an invoice (v1 schema).",
+         required: [customer_id, amount] }
+
+  # ---- Edge cases: ungrouped/generic names ----
+  # These are the deliberately-pathological cases. Generic names lose the
+  # domain signal in the fingerprint, so they may misbehave at any threshold
+  # — that's the point of including them.
+  - label: duplicate
+    category: generic_name
+    notes: "messy-mcp's `create` actually creates a customer"
+    a: { server: messy-mcp, name: create,
+         description: "Generic create — actually creates a customer." }
+    b: { server: messy-mcp, name: createCustomer,
+         description: "Create a customer." }
+
+  - label: duplicate
+    category: generic_name
+    notes: "messy-mcp's `lookup` is a customer lookup"
+    a: { server: messy-mcp, name: lookup,
+         description: "Generic lookup of a customer by partial match." }
+    b: { server: messy-mcp, name: customer_lookup,
+         description: "Look up a customer by partial match.",
+         required: [term] }
+
+  - label: novel
+    category: generic_name
+    notes: "messy-mcp's `list` returns invoices, not customers"
+    a: { server: messy-mcp, name: list,
+         description: "Generic list — actually returns invoices." }
+    b: { server: governed-mcp, name: financeCustomerSearch,
+         description: "Search the customer directory by query string." }

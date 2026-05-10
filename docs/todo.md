@@ -75,12 +75,22 @@ they surface._
   loophole where a duplicate slips through both L1 and L2 (e.g. via a
   force-merge, or via a new MCP server added outside the PR flow).
 
-- [ ] **Quantitative precision/recall study**
-  Build a labeled set of 30–50 known-duplicate vs known-novel pairs
-  from real-world MCP servers (or curated synthetic ones), and report
-  precision/recall per threshold. Would let us defend the 0.88 vs 0.92
-  choice with a number, not a vibe — and inform a future "auto-tune
-  threshold per organization" feature.
+- [x] **Quantitative precision/recall study (scaffold)**
+  Labeled pair set at `apps/dup-resolver/tests/labeled_pairs.yaml`
+  (~25 pairs across syntactic/semantic/cross-server dups and hard
+  negatives). Evaluator at `apps/dup-resolver/eval_threshold.py`
+  embeds, sweeps thresholds, reports P/R/F1 + per-pair scores +
+  separability margin. First run published to
+  `docs/eval/precision-recall.md` shows L2 is high-precision
+  (1.000 at ≥0.85) and lower-recall (~0.21 at 0.92), with a
+  negative separability margin on the hardest semantic dups.
+  **Next iteration:** grow the labeled set from real PRs (target
+  30–50) and revisit the threshold + fingerprint shape choices.
+
+- [ ] **Quantitative precision/recall study (~~scaffold~~)** — above.
+  Original ask: 30–50 pairs from real-world MCP servers. Current set
+  is 26 pairs from the two demo specs. Open until we have a labeled
+  set drawn from outside-the-repo sources.
 
 - [ ] **Spec source plurality** — **complete**. Manifest at
   `apim/openapi/_servers.yaml` is now the source of truth, and
