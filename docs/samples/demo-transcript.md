@@ -172,18 +172,27 @@ The output below is byte-for-byte what the script produces on a healthy run
   Imagine this op just landed in a PR against apim/openapi/finance-governed.json.
   The same code runs in CI via .github/workflows/similarity-check.yml.
   $ curl -X POST http://127.0.0.1:8089/similarity -d '{...financeQuoteFetch...}'
-  verdict   : WARN
-  threshold : 0.88
-  reason    : top match 'financeQuoteGet' (score 0.832) is close to threshold 0.88; reviewer should confirm not a duplicate
+  verdict   : DUPLICATE
+  threshold : 0.92  (this repo's tightened override; default in config.py is 0.88)
+  reason    : top match 'financeQuoteGet' on governed-mcp (score 0.958) >= threshold 0.92;
+              reuse the canonical or rename this op
 
   Top 3 nearest neighbors in the index:
-    0.832  governed-mcp/financeQuoteGet [CANONICAL]
-    0.675  governed-mcp/financeInvoiceGet [CANONICAL]
-    0.665  governed-mcp/financeCustomerGet [CANONICAL]
+    0.958  governed-mcp/financeQuoteGet [CANONICAL]
+    0.679  governed-mcp/financeInvoiceGet [CANONICAL]
+    0.671  governed-mcp/financeCustomerGet [CANONICAL]
 
-  WARN verdict — close to threshold, reviewer confirms.
-  If score ≥ 0.88, CI would FAIL the PR with a DUPLICATE verdict in the step summary.
-  Same vector index also powers the runtime /similarity API for federated catalogs.
+  Index freshness: oldest top-hit last_seen_utc shown in the markdown footer
+  (re-ingested by .github/workflows/ingest-on-merge.yml on every push to main).
+
+  CI exits 1 → the required check fails → PR is blocked from merging.
+  See PR #1 history for a captured live run: DUPLICATE 0.958, ❌ failure.
+  Bonus: validate-mcp-tools/lint also fails (E005 — 'fetch' not in approved
+  verb list). L1 + L2 both firing on the same PR demonstrates defense-in-depth.
+
+  If the developer also DELETED financeQuoteGet in the same PR, the verdict
+  would be ℹ️ INFO ('looks like a rename, not a duplicate') — see the
+  rename-detected scenario in apps/dup-resolver/tests/run_scenarios.sh.
 
 =================================================================
  BONUS — The eval numbers (the 'so what') 

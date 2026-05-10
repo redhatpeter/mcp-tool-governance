@@ -60,8 +60,35 @@ cp .env.example .env    # fill in endpoints/keys (RBAC preferred — see below)
 | `APIM_GATEWAY_BASE` | `https://apimopenai99.azure-api.net` |
 | `APIM_KEY_FILE` | `/tmp/apim-master-key.txt` |
 | `MCP_SERVERS` | `governed-mcp,messy-mcp` |
+| `MCP_SOURCE` | `apim` (default) or `openapi` (read specs from `apim/openapi/*.json`) |
+| `OPENAPI_SPEC_DIR` | `apim/openapi` (used when `MCP_SOURCE=openapi`) |
+| `CLUSTER_THRESHOLD` | `0.88` default; see *Threshold tuning* below |
 
 Auth uses `DefaultAzureCredential` for both AOAI and AI Search — `az login` is enough locally.
+
+### Threshold tuning — the `CLUSTER_THRESHOLD` knob
+
+The cosine-similarity score above which two tools are considered **duplicates** rather than merely related. Affects:
+- the L2 CI gate (`similarity-check.yml`) — `>= threshold` fails the PR
+- the WARN band (`threshold − 0.05 ≤ score < threshold`) — flagged for reviewer
+- single-linkage clustering inside `cluster.py` — same threshold
+
+| Value | Behavior | When to use |
+|---|---|---|
+| `0.85` | Aggressive — catches paraphrases, more false positives | New environment with no labeled data; tune down later |
+| **`0.88`** | **Ship default** — caught every duplicate in our test suite without false positives | Most repos |
+| `0.92` | Tightened — only near-verbatim duplicates hard-fail; paraphrases get WARN instead | Production orgs that prefer reviewer gates over auto-blocks |
+| `0.95+` | Permissive — only catches obvious copy-paste | Probably too loose; not recommended |
+
+**How to override per-repo without a code change:** set the GitHub repo variable `CLUSTER_THRESHOLD` (Settings → Secrets and variables → Actions → Variables). The `similarity-check` workflow reads it via `${{ vars.CLUSTER_THRESHOLD }}` and exports it as an env var; `config.py` picks it up. Falls back to `0.88` from `config.py` if unset.
+
+This repo currently overrides to **`0.92`** — see `gh variable list` to confirm.
+
+Validate any threshold choice locally:
+```bash
+cd apps/dup-resolver && source .venv/bin/activate
+CLUSTER_THRESHOLD=0.92 bash tests/run_scenarios.sh
+```
 
 ### Provision the index (one-time)
 
