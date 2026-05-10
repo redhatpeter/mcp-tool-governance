@@ -28,6 +28,7 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ Fingerprint variant A/B harness (`--compare`, 5 shapes) — production fingerprint kept
 - ✅ L3 step 1 — canonical_map writer (Cosmos `governance.mcp-canonical-map`)
 - ✅ L3 step 2 — `tools/list` filter policy + writer schema enrichment (primary, aliases)
+- ✅ L3 step 3 — `tools/call` rewrite for unified schema + Python validation harness
 
 ## P0 — operational gaps that will bite us next demo
 
@@ -82,8 +83,14 @@ they surface._
     enriched with `primary` + `aliases` projection fields so both the
     new policy and the existing `canonical-rewrite.policy.xml` consume
     the same docs. **Not yet deployed** — attach via Portal per server.
-  - [ ] **L3 step 3** — `tools/call` policy enforces the canonical
-    mapping (caller named a non-canonical → 308 / rewrite or 409 / fail).
+  - [x] **L3 step 3** — `canonical-rewrite.policy.xml` rewritten for
+    the unified schema. Synthesizes `<server>__<wire>` fqid, queries
+    `c.id = @id OR ARRAY_CONTAINS(c.aliases, @id)`, returns
+    `c.primary.name`. Validation harness at
+    `apps/dup-resolver/tests/validate_policies.py` replays both policy
+    queries against live Cosmos — 9/9 assertions pass on the demo data
+    (3 alias resolutions, 1 already-canonical, 1 singleton, 1 unknown
+    fail-open, plus 2 tools/list drop-set cases). **Not yet deployed.**
   - [ ] **L3 step 4** — wire `COSMOS_ENDPOINT` into ingest workflows
     (`ingest-on-merge`, `daily-ingest`) so production canonical_map
     stays in sync without local runs.

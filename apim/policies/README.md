@@ -128,13 +128,14 @@ If `id == primary.name` (singleton cluster — no duplicates) both policies
 are no-ops for that doc. See ARCHITECTURE §13–§14 for the full
 canonical_map design.
 
-> **Note on the `tools/call` rewrite:** the existing
-> `canonical-rewrite.policy.xml` queries by `requestedTool` (the wire
-> name from `params.name`), but doc ids are server-prefixed
-> (`<server>__<name>`). In a per-server APIM API attachment the policy
-> can synthesize the prefix the same way `tools-list-filter` does;
-> this harmonization is a known TODO — the policy currently assumes a
-> non-prefixed key and is left in that state until per-server testing.
+> **Note on the `tools/call` rewrite (L3 step 3):** the policy now
+> synthesizes the fully-qualified id as `<server-name>__<wire_name>`
+> (matching the writer's `doc_id` format) before lookup. The Cosmos
+> query joins on `c.id = @id OR ARRAY_CONTAINS(c.aliases, @id)`, so a
+> requested alias resolves to the canonical wire name in one call.
+> Validated end-to-end via
+> `apps/dup-resolver/tests/validate_policies.py` (replays the same SQL
+> and asserts expected behavior on the demo data).
 
 ## Failure mode
 

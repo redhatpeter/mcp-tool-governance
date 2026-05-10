@@ -1,10 +1,47 @@
 <!--
   MCP-server-scoped APIM policy: canonical-name rewrite for tools/call.
 
-  Source of truth: docs/ARCHITECTURE.md §15.
-  Attach in Azure Portal:
-    APIs → MCP Servers → <server> → MCP → Policies (replaces the empty <inbound>).
-  Prerequisites: see apim/policies/README.md.
+  L3 step 3 of the MCP Tool Governance design (docs/ARCHITECTURE.md §15).
+
+  WHAT IT DOES
+    On the INBOUND leg of an MCP `tools/call` JSON-RPC frame, looks up
+    the requested tool's fully-qualified id ("<server>__<name>") in the
+    canonical_map. If the requested id is an alias (i.e. the doc with
+    that id is a non-canonical member of some cluster), rewrites
+    `params.name` to the canonical wire name before forwarding to the
+    backend. Adds an `x-mcp-canonical-rewrite` response header for
+    observability.
+
+    Pairs with `tools-list-filter.policy.xml` (outbound) — together they
+    deliver L3: clients only see canonicals on tools/list, and any
+    direct call to an alias is silently rewritten to the canonical.
+
+    Fail-open: any Cosmos error or missing mapping leaves params.name
+    untouched.
+
+  ATTACH IN AZURE PORTAL
+    APIs → MCP Servers → <server> → MCP → Policies (replaces the
+    existing inbound block — composes with `tools-list-filter` if you
+    keep that one in <outbound>).
+
+  PREREQUISITES
+    Same as the tools/list filter — see apim/policies/README.md.
+    Specifically:
+      - APIM system-assigned MI exists.
+      - MI has Cosmos DB Built-in Data Reader on
+        /dbs/governance/colls/mcp-canonical-map.
+      - Cosmos doc shape includes `primary.name` and `aliases` (emitted
+        by apps/dup-resolver/canonical_map.py since L3 step 2).
+
+  PLACEHOLDERS (replace before pasting; or wire as Named Values)
+    <tenant-id>            Entra tenant GUID (validate-jwt)
+    api://mcp-gateway      Audience claim required on inbound JWTs
+    <server-name>          MCP server name as it appears in the doc_id
+                           prefix (e.g. "governed-mcp" or "messy-mcp").
+                           Used to scope the lookup to this server's
+                           canonical_map entries.
+    cosmoslab82658         Cosmos account host. PoC default; change for
+                           other environments.
 -->
 <policies>
   <inbound>
@@ -29,50 +66,82 @@
     <choose>
       <when condition="@((string)context.Variables["rpcMethod"] == "tools/call")">
 
+        <!-- 3a. Build the fully-qualified id we'll look up.
+             tools/call's `params.name` is just the wire name; canonical_map
+             docs are keyed by "<server>__<wire_name>" so we synthesize the
+             prefix here. -->
         <set-variable name="requestedTool"
                       value="@(((JObject)context.Variables["rpcBody"])["params"]?["name"]?.ToString())" />
+        <set-variable name="requestedFqid"
+                      value="@("<server-name>__" + (string)context.Variables["requestedTool"])" />
 
-        <!-- 3a. APIM-internal cache (60s TTL) -->
+        <!-- 3b. APIM-internal cache (60s TTL) keyed by FQID -->
         <cache-lookup-value
-            key="@("canon:" + (string)context.Variables["requestedTool"])"
+            key="@("canon:" + (string)context.Variables["requestedFqid"])"
             variable-name="canonicalTool" />
 
-        <!-- 3b. On miss, call Cosmos with managed identity -->
+        <!-- 3c. On miss, query Cosmos for the canonical_map doc whose
+             id matches OR aliases contains the requested fqid. We use a
+             query (not point-read) because the requested id might be an
+             alias — and aliases live as array entries inside the
+             canonical's doc, not as standalone docs. -->
         <choose>
           <when condition="@(!context.Variables.ContainsKey("canonicalTool"))">
             <authentication-managed-identity resource="https://cosmos.azure.com"
                                              output-token-variable-name="cosmosAadToken" />
-            <send-request mode="new" response-variable-name="cosmosResp" timeout="2" ignore-error="true">
-              <set-url>@($"https://cosmoslab82658.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs/{(string)context.Variables["requestedTool"]}")</set-url>
-              <set-method>GET</set-method>
+            <send-request mode="new" response-variable-name="cosmosResp"
+                          timeout="2" ignore-error="true">
+              <set-url>@($"https://cosmoslab82658.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs")</set-url>
+              <set-method>POST</set-method>
               <set-header name="Authorization" exists-action="override">
                 <value>@("type=aad&ver=1.0&sig=" + (string)context.Variables["cosmosAadToken"])</value>
               </set-header>
               <set-header name="x-ms-version" exists-action="override">
                 <value>2018-12-31</value>
               </set-header>
-              <set-header name="x-ms-documentdb-partitionkey" exists-action="override">
-                <value>@($"[\"{(string)context.Variables["requestedTool"]}\"]")</value>
+              <set-header name="x-ms-documentdb-isquery" exists-action="override">
+                <value>true</value>
               </set-header>
+              <set-header name="x-ms-documentdb-query-enablecrosspartition" exists-action="override">
+                <value>true</value>
+              </set-header>
+              <set-header name="Content-Type" exists-action="override">
+                <value>application/query+json</value>
+              </set-header>
+              <set-body>@{
+                var q = new JObject(
+                  new JProperty("query",
+                    "SELECT VALUE c.primary.name FROM c WHERE c.id = @id OR ARRAY_CONTAINS(c.aliases, @id)"),
+                  new JProperty("parameters", new JArray(
+                    new JObject(new JProperty("name", "@id"),
+                                new JProperty("value", (string)context.Variables["requestedFqid"]))
+                  ))
+                );
+                return q.ToString();
+              }</set-body>
             </send-request>
 
-            <!-- Fail open: if Cosmos errors or doc missing, keep the requested name -->
-            <set-variable name="canonicalTool"
-              value="@{
-                var resp = (IResponse)context.Variables.GetValueOrDefault("cosmosResp");
-                if (resp == null || resp.StatusCode >= 400) return (string)context.Variables["requestedTool"];
-                var doc = resp.Body.As<JObject>();
-                return doc["primary"]?["name"]?.ToString() ?? (string)context.Variables["requestedTool"];
-              }" />
+            <!-- Fail open: if Cosmos errors or returns nothing, keep
+                 the originally-requested wire name untouched. -->
+            <set-variable name="canonicalTool" value="@{
+              var resp = (IResponse)context.Variables.GetValueOrDefault("cosmosResp");
+              if (resp == null || resp.StatusCode >= 400)
+                return (string)context.Variables["requestedTool"];
+              var body = resp.Body.As<JObject>();
+              var docs = body["Documents"] as JArray;
+              if (docs == null || docs.Count == 0)
+                return (string)context.Variables["requestedTool"];
+              return docs[0]?.ToString() ?? (string)context.Variables["requestedTool"];
+            }" />
 
             <cache-store-value
-                key="@("canon:" + (string)context.Variables["requestedTool"])"
+                key="@("canon:" + (string)context.Variables["requestedFqid"])"
                 value="@((string)context.Variables["canonicalTool"])"
                 duration="60" />
           </when>
         </choose>
 
-        <!-- 3c. Rewrite the JSON-RPC body if alias != canonical -->
+        <!-- 3d. Rewrite the JSON-RPC body if alias != canonical -->
         <choose>
           <when condition="@((string)context.Variables["canonicalTool"] != (string)context.Variables["requestedTool"])">
             <set-body>@{

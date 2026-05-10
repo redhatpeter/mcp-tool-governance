@@ -385,3 +385,22 @@ doc = canonical_map.read_canonical("governed-mcp__financeCustomerCreate")
 # doc["members"] is the list of duplicates, with one is_canonical=True.
 ```
 
+**Validating writer ↔ policy schema agreement:**
+
+After any change to `canonical_map.py` or to `apim/policies/*.xml`,
+replay the exact Cosmos queries the policies issue and assert the
+expected canonical / drop-set behavior:
+
+```bash
+cd apps/dup-resolver && source .venv/bin/activate
+export COSMOS_ENDPOINT=https://cosmoslab82658.documents.azure.com:443/
+python3 ingest.py >/dev/null   # populate the map
+python3 tests/validate_policies.py
+```
+
+The validator probes the demo data (`messy-mcp` `createCustomer` /
+`Create_Customer` / `customer_create` cluster + `invoice_create_v1` / `v2`)
+and would have caught any of the schema mismatches the round-trip
+tests are likely to surface in production. Exit code: `0` ok, `1`
+schema disagreement, `2` Cosmos unreachable / map empty.
+
