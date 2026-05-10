@@ -53,6 +53,12 @@ jobs:
         run: pip install -r apps/dup-resolver/requirements.txt
 
       - name: Wire-name resolution regression test
+        # apim_wirenames imports `config`, which validates the full
+        # ingest env at import time. Pass placeholders so the module
+        # loads — the test itself doesn't touch those services.
+        env:
+          AOAI_ENDPOINT: "https://placeholder.openai.azure.com"
+          SEARCH_ENDPOINT: "https://placeholder.search.windows.net"
         working-directory: apps/dup-resolver
         run: python tests/test_wirename_resolution.py
 
