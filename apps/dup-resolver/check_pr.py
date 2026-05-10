@@ -25,6 +25,7 @@ from typing import Any
 import config
 import embed
 import fingerprint as fp
+import openapi_source
 import search_client
 
 
@@ -96,12 +97,40 @@ def diff_new_operations(base_ref: str, file_path: str) -> list[dict[str, Any]]:
     return new
 
 
+def diff_deleted_operations(base_ref: str, file_path: str) -> set[str]:
+    """Return operationIds removed in the working tree relative to ``base_ref``.
+
+    Used to mute false-positive DUPLICATE verdicts during a rename PR: if the
+    new op matches an op we're deleting in the same PR, it's a rename, not a
+    real duplicate.
+    """
+    head_spec = _load_head_spec(file_path)
+    head_ops = extract_operations(head_spec)
+    base_spec = load_spec_at_ref(base_ref, file_path)
+    if not base_spec:
+        return set()
+    base_ops = extract_operations(base_spec)
+    return set(base_ops) - set(head_ops)
+
+
+def _server_for_spec(spec_file: str) -> str | None:
+    """Map a spec file path to its MCP server name (mirror openapi_source)."""
+    stem = Path(spec_file).stem
+    return openapi_source.SERVER_BY_FILE.get(stem)
+
+
 # ---------------------------------------------------------------------------
 # Similarity scoring (mirrors main.py /similarity logic)
 # ---------------------------------------------------------------------------
 
-def score_candidate(op: dict[str, Any]) -> dict[str, Any]:
-    """Score a single candidate operation against the live index."""
+def score_candidate(op: dict[str, Any],
+                    deleted_in_pr: dict[str, set[str]] | None = None) -> dict[str, Any]:
+    """Score a single candidate operation against the live index.
+
+    ``deleted_in_pr`` is ``{server: {operationIds_being_deleted}}`` for the
+    same PR. If the top match is one of those, we treat the verdict as a
+    rename (INFO), not a duplicate.
+    """
     desc = op.get("description") or op.get("summary") or ""
     descriptor = fp.ToolDescriptor(
         server="<pr-candidate>",
@@ -112,7 +141,7 @@ def score_candidate(op: dict[str, Any]) -> dict[str, Any]:
     text = fp.fingerprint_text(descriptor)
     vec = embed.embed_one(text)
     hits = search_client.vector_query(vec, k=5, select=[
-        "id", "server", "tool_name", "cluster_id", "canonical_id", "is_canonical",
+        "id", "server", "tool_name", "cluster_id", "canonical_id", "is_canonical", "last_seen_utc",
     ])
     threshold = config.CLUSTER_THRESHOLD
     if not hits:
@@ -121,7 +150,21 @@ def score_candidate(op: dict[str, Any]) -> dict[str, Any]:
     else:
         top = hits[0]
         score = float(top.get("_score", 0.0))
-        if score >= threshold:
+        # Rename detection: top match is being deleted in this same PR
+        top_server = top.get("server")
+        top_name = top.get("tool_name")
+        is_rename = (
+            deleted_in_pr is not None
+            and top_server in deleted_in_pr
+            and top_name in deleted_in_pr[top_server]
+        )
+        if is_rename:
+            verdict = "INFO"
+            reason = (
+                f"top match '{top_name}' on {top_server} (score {score:.3f}) "
+                f"is being deleted in this PR — looks like a rename, not a duplicate"
+            )
+        elif score >= threshold:
             verdict = "DUPLICATE"
             reason = (
                 f"top match '{top['tool_name']}' on {top['server']} "
@@ -142,6 +185,7 @@ def score_candidate(op: dict[str, Any]) -> dict[str, Any]:
         "spec_file": op["spec_file"],
         "verdict": verdict,
         "reason": reason,
+        "top_last_seen_utc": (hits[0].get("last_seen_utc") if hits else None),
         "nearest": [
             {
                 "server": h.get("server"),
@@ -159,14 +203,14 @@ def score_candidate(op: dict[str, Any]) -> dict[str, Any]:
 # Markdown report
 # ---------------------------------------------------------------------------
 
-VERDICT_EMOJI = {"DUPLICATE": "🛑", "WARN": "⚠️", "OK": "✅"}
+VERDICT_EMOJI = {"DUPLICATE": "🛑", "WARN": "⚠️", "OK": "✅", "INFO": "ℹ️"}
 
 
 def render_report(results: list[dict[str, Any]]) -> str:
     if not results:
         return "## L1 similarity check\n\nNo new operations introduced — nothing to score.\n"
     lines = ["## L1 similarity check", ""]
-    summary = {"DUPLICATE": 0, "WARN": 0, "OK": 0}
+    summary = {"DUPLICATE": 0, "WARN": 0, "OK": 0, "INFO": 0}
     for r in results:
         summary[r["verdict"]] += 1
     lines.append(
@@ -174,10 +218,13 @@ def render_report(results: list[dict[str, Any]]) -> str:
         f"🛑 {summary['DUPLICATE']} duplicate · "
         f"⚠️ {summary['WARN']} warn · "
         f"✅ {summary['OK']} ok"
+        + (f" · ℹ️ {summary['INFO']} rename" if summary['INFO'] else "")
     )
     lines.append("")
     lines.append("| Verdict | operationId | Top match | Score | Reason |")
     lines.append("|---|---|---|---|---|")
+    # Track index freshness for the footer.
+    freshness = [r.get("top_last_seen_utc") for r in results if r.get("top_last_seen_utc")]
     for r in results:
         emo = VERDICT_EMOJI[r["verdict"]]
         top = r["nearest"][0] if r["nearest"] else {}
@@ -185,6 +232,14 @@ def render_report(results: list[dict[str, Any]]) -> str:
         score_str = f"{top.get('score', 0):.3f}" if top else "—"
         lines.append(
             f"| {emo} {r['verdict']} | `{r['operationId']}` | `{top_str}` | {score_str} | {r['reason']} |"
+        )
+    if freshness:
+        # Min freshness = oldest top-hit observed; helps reviewers spot a stale index.
+        oldest = min(freshness)
+        lines.append("")
+        lines.append(
+            f"_Index freshness: oldest top-hit `last_seen_utc` = {oldest} "
+            f"(re-run `ingest-on-merge` workflow if this looks stale)._"
         )
     return "\n".join(lines) + "\n"
 
@@ -203,6 +258,9 @@ def main() -> int:
     args = ap.parse_args()
 
     candidates: list[dict[str, Any]] = []
+    # Build per-server set of ops being deleted in this PR. With --all we
+    # have no diff context, so deletions are unknown (empty).
+    deleted_in_pr: dict[str, set[str]] = {}
     for f in args.files:
         if args.all:
             spec = _load_head_spec(f)
@@ -211,9 +269,14 @@ def main() -> int:
                 candidates.append({"operationId": op_id, "spec_file": f, **info})
         else:
             candidates.extend(diff_new_operations(args.base, f))
+            server = _server_for_spec(f)
+            if server:
+                deleted = diff_deleted_operations(args.base, f)
+                if deleted:
+                    deleted_in_pr.setdefault(server, set()).update(deleted)
 
     print(f"# {len(candidates)} candidate operation(s) to score", file=sys.stderr)
-    results = [score_candidate(c) for c in candidates]
+    results = [score_candidate(c, deleted_in_pr=deleted_in_pr) for c in candidates]
     report = render_report(results)
     print(report)
 

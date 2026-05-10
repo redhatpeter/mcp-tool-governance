@@ -208,6 +208,111 @@ git -C ../.. branch -D "$DEL_BR" >/dev/null 2>&1
 git -C ../.. checkout -- apim/openapi/finance-governed.json 2>/dev/null
 
 # ---------------------------------------------------------------------------
+# Scenario 7b (rename UX): rename + delete in same PR -> INFO, not DUPLICATE
+# Add a new op `getQuote` with the same description as `financeQuoteGet`,
+# AND delete `financeQuoteGet` in the same PR. The deletion-aware filter
+# should downgrade the verdict to INFO ("looks like a rename").
+# ---------------------------------------------------------------------------
+echo
+echo "============================================================"
+echo "SCENARIO: rename-detected (delete + re-add same desc in one PR)"
+echo "============================================================"
+REN_BR="test/rename-$$"
+git -C ../.. checkout -b "$REN_BR" main >/dev/null 2>&1
+python - <<PY
+import json, pathlib
+p = pathlib.Path("../../apim/openapi/finance-governed.json")
+s = json.loads(p.read_text())
+old_desc = None
+# Find financeQuoteGet, capture its description, then delete it
+for path, methods in list(s["paths"].items()):
+    for m, op in list(methods.items()):
+        if op.get("operationId") == "financeQuoteGet":
+            old_desc = op.get("description") or op.get("summary") or ""
+            del methods[m]
+# Add getQuote with the same description (rename)
+s["paths"]["/governed/quotes/{symbol}/get"] = {
+    "get": {
+        "operationId": "getQuote",
+        "summary": "getQuote",
+        "description": old_desc,
+        "responses": {"200": {"description": "ok"}},
+    }
+}
+p.write_text(json.dumps(s, indent=2))
+PY
+git -C ../.. add apim/openapi/finance-governed.json >/dev/null 2>&1
+git -C ../.. commit -m "test: rename" >/dev/null 2>&1
+set +e
+rout=$(python check_pr.py --base main ../../apim/openapi/finance-governed.json 2>&1)
+rexit=$?
+set -e
+echo "$rout"
+echo "--- exit=$rexit ---"
+if [[ "$rexit" == "0" ]] && echo "$rout" | grep -qE "INFO.*getQuote.*rename"; then
+  echo "PASS: rename-detected"
+  PASS=$((PASS + 1))
+else
+  echo "FAIL: rename-detected — expected INFO verdict citing rename"
+  FAIL=$((FAIL + 1))
+fi
+git -C ../.. checkout main >/dev/null 2>&1
+git -C ../.. branch -D "$REN_BR" >/dev/null 2>&1
+git -C ../.. checkout -- apim/openapi/finance-governed.json 2>/dev/null
+
+# ---------------------------------------------------------------------------
+# Scenario 7c (multi-file PR): two specs changed in one PR.
+# Build a branch that adds a novel op to BOTH finance-governed.json and
+# finance-messy.json. Confirm both files are scored and both rows appear.
+# ---------------------------------------------------------------------------
+echo
+echo "============================================================"
+echo "SCENARIO: multi-file-pr"
+echo "============================================================"
+MF_BR="test/multifile-$$"
+git -C ../.. checkout -b "$MF_BR" main >/dev/null 2>&1
+python - <<PY
+import json, pathlib
+for fname, op_id, desc in [
+    ("finance-governed.json", "novelGovernedOp",
+     "Onboard a new employee into the HR system: payroll, email, manager, orientation."),
+    ("finance-messy.json", "novelMessyOp",
+     "Compute monthly billing summary for a customer across all line items."),
+]:
+    p = pathlib.Path(f"../../apim/openapi/{fname}")
+    s = json.loads(p.read_text())
+    s["paths"][f"/test/{op_id}"] = {
+        "post": {
+            "operationId": op_id,
+            "summary": op_id,
+            "description": desc,
+            "responses": {"200": {"description": "ok"}},
+        }
+    }
+    p.write_text(json.dumps(s, indent=2))
+PY
+git -C ../.. add apim/openapi/finance-governed.json apim/openapi/finance-messy.json >/dev/null 2>&1
+git -C ../.. commit -m "test: multifile" >/dev/null 2>&1
+set +e
+mfout=$(python check_pr.py --base main \
+  ../../apim/openapi/finance-governed.json \
+  ../../apim/openapi/finance-messy.json 2>&1)
+mfexit=$?
+set -e
+echo "$mfout"
+echo "--- exit=$mfexit ---"
+if echo "$mfout" | grep -q "novelGovernedOp" && echo "$mfout" | grep -q "novelMessyOp"; then
+  echo "PASS: multi-file-pr (both ops scored)"
+  PASS=$((PASS + 1))
+else
+  echo "FAIL: multi-file-pr — expected both novelGovernedOp and novelMessyOp in report"
+  FAIL=$((FAIL + 1))
+fi
+git -C ../.. checkout main >/dev/null 2>&1
+git -C ../.. branch -D "$MF_BR" >/dev/null 2>&1
+git -C ../.. checkout -- apim/openapi/finance-governed.json apim/openapi/finance-messy.json 2>/dev/null
+
+# ---------------------------------------------------------------------------
 # Scenario 7 (#3 in plan): Cross-server collision
 # Add the duplicate op to messy-mcp.json (different file/server) — does the
 # index still flag it against governed-mcp/financeQuoteGet?
