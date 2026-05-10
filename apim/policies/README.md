@@ -10,6 +10,7 @@ deployed via APIM Policy Fragments + Terraform.
 | File | Scope | Purpose |
 |---|---|---|
 | [canonical-rewrite.policy.xml](canonical-rewrite.policy.xml) | MCP server (per imported API) | JWT validation, rate limiting, and canonical-name rewrite for `tools/call` JSON-RPC frames. Fails open on Cosmos errors. |
+| [tools-list-filter.policy.xml](tools-list-filter.policy.xml) | MCP server (per imported API) | Outbound filter for `tools/list` responses. Drops every tool whose fully-qualified id (`<server>__<name>`) appears in any cluster's `aliases` array. The LLM only ever sees canonicals. Fails open. |
 
 ## Where it attaches
 
@@ -84,29 +85,79 @@ For a production-grade flow these become **APIM Named Values** (or Key Vault
 references) and the policy uses `{{tenant-id}}` etc. — see ARCHITECTURE §24
 #10 (Policy Fragments).
 
-## Cosmos document shape (assumed by the policy)
+## Cosmos document shape (assumed by the policies)
 
-```json
+L2 (`apps/dup-resolver/canonical_map.py`) writes one document per cluster.
+The shape is unified — both policies read from the same docs, just
+different fields:
+
+```jsonc
 {
-  "id": "<requestedToolName>",
-  "primary": { "name": "<canonicalToolName>", "...": "..." },
-  "aliases": ["..."]
+  "id":              "<server>__<canonical_name>",   // partition key value
+  "canonical_id":    "<server>__<canonical_name>",
+  "cluster_id":      "<cluster_id>",
+  "canonical_server":"governed-mcp",
+  "canonical_name":  "financeCustomerCreate",
+  "primary": {                                        // tools/call rewrite reads here
+    "id":     "<server>__<canonical_name>",
+    "server": "governed-mcp",
+    "name":   "financeCustomerCreate"
+  },
+  "aliases": [                                        // tools/list filter reads here
+    "messy-mcp__createCustomer",
+    "messy-mcp__Create_Customer"
+  ],
+  "members": [
+    { "id":"...", "server":"...", "name":"...", "is_canonical": true|false }
+  ],
+  "members_count":    3,
+  "score":            1.0,
+  "score_breakdown":  { ... },
+  "last_updated_utc": "2026-05-10T...Z",
+  "ingest_run_id":    "<GITHUB_SHA or uuid>"
 }
 ```
 
-If `id == primary.name` the request is already canonical and the rewrite
-branch is a no-op. See ARCHITECTURE §13–§14 for the full canonical_map design.
+| Field | Read by |
+|-------|---------|
+| `primary.name`             | `canonical-rewrite.policy.xml` (rewrites `params.name` on `tools/call`) |
+| `aliases[]`                | `tools-list-filter.policy.xml` (drops matching tools from `tools/list`) |
+| `score` / `score_breakdown`| Debug / App Insights workbooks (not read by policies) |
+
+If `id == primary.name` (singleton cluster — no duplicates) both policies
+are no-ops for that doc. See ARCHITECTURE §13–§14 for the full
+canonical_map design.
+
+> **Note on the `tools/call` rewrite:** the existing
+> `canonical-rewrite.policy.xml` queries by `requestedTool` (the wire
+> name from `params.name`), but doc ids are server-prefixed
+> (`<server>__<name>`). In a per-server APIM API attachment the policy
+> can synthesize the prefix the same way `tools-list-filter` does;
+> this harmonization is a known TODO — the policy currently assumes a
+> non-prefixed key and is left in that state until per-server testing.
 
 ## Failure mode
 
-**Fail-open.** `send-request` uses `ignore-error="true"` and the value-set
-guard returns the originally-requested tool name on any Cosmos error or
-missing document. To switch to fail-closed, set `ignore-error="false"` and
-remove the null guard in step 3b.
+**Fail-open** for both policies. Any Cosmos error or missing document
+results in the original request/response passing through unchanged:
+
+- `canonical-rewrite.policy.xml` — `send-request` uses `ignore-error="true"`
+  and the value-set guard returns the originally-requested tool name on
+  any Cosmos error or missing document. To switch to fail-closed, set
+  `ignore-error="false"` and remove the null guard.
+- `tools-list-filter.policy.xml` — same pattern; an empty / errored
+  Cosmos response yields an empty drop set, so every tool passes through.
+
+The trade-off: a transient Cosmos blip will not break the MCP gateway,
+but it will momentarily expose non-canonical members. App Insights
+should alert on a sustained absence of `x-mcp-tools-filtered` headers
+once L3 is in production.
 
 ## Testing
 
-There is no automated test for this policy yet. Manual smoke test:
+There is no automated test for either policy yet. Manual smoke tests:
+
+### `canonical-rewrite.policy.xml` (tools/call)
 
 1. Insert a doc with `id="foo_bar"` and `primary.name="canonical_foo"` into
    `mcp-canonical-map`.
@@ -118,4 +169,22 @@ There is no automated test for this policy yet. Manual smoke test:
    - App Insights shows the rewrite header in the request trace.
 4. Re-issue within 60s; verify cache hit (no Cosmos call in APIM trace).
 
-A scripted version of this will land in `tools-cli/` during PoC week 1.
+### `tools-list-filter.policy.xml` (tools/list)
+
+1. Run `apps/dup-resolver` ingest end-to-end against the live MCP servers
+   (or use the openapi source). Confirm `mcp-canonical-map` has at least
+   one doc with non-empty `aliases`. (The PoC stress data — `messy-mcp`
+   `createCustomer` / `Create_Customer` / `customer_create` — produces
+   exactly this shape.)
+2. Replace `<server-name>` in the policy with the real server name
+   (e.g. `messy-mcp`) and attach to the corresponding APIM MCP server.
+3. Issue `tools/list` against that server.
+4. Confirm:
+   - The response no longer contains the alias members (e.g.
+     `createCustomer` and `Create_Customer` should be dropped; only
+     `customer_create` remains).
+   - Response carries `x-mcp-tools-filtered: <count>`.
+   - App Insights shows the filter header in the response trace.
+5. Re-issue within 60s; verify cache hit.
+
+A scripted version of these will land in `tools-cli/` during PoC week 1.

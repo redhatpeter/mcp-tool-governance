@@ -27,6 +27,7 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ Precision/recall scaffold — labeled set + sweep evaluator + first report
 - ✅ Fingerprint variant A/B harness (`--compare`, 5 shapes) — production fingerprint kept
 - ✅ L3 step 1 — canonical_map writer (Cosmos `governance.mcp-canonical-map`)
+- ✅ L3 step 2 — `tools/list` filter policy + writer schema enrichment (primary, aliases)
 
 ## P0 — operational gaps that will bite us next demo
 
@@ -74,9 +75,13 @@ they surface._
     cluster, partitioned by `/canonical_id`). Writer is optional-by-
     default — empty `COSMOS_ENDPOINT` no-ops; AAD or key auth.
     Reconcile mirrors the AI Search ghost-doc cleanup.
-  - [ ] **L3 step 2** — APIM `tools/list` policy reads canonical_map
-    and rewrites the response so non-canonical members are dropped (or
-    relabeled) before the LLM ever sees them. This is the runtime gate.
+  - [x] **L3 step 2** — APIM `tools/list` filter policy authored at
+    `apim/policies/tools-list-filter.policy.xml`. Reads `aliases` from
+    canonical_map (cached 60s), drops every alias from outbound
+    `tools/list` response, adds `x-mcp-tools-filtered` header. Writer
+    enriched with `primary` + `aliases` projection fields so both the
+    new policy and the existing `canonical-rewrite.policy.xml` consume
+    the same docs. **Not yet deployed** — attach via Portal per server.
   - [ ] **L3 step 3** — `tools/call` policy enforces the canonical
     mapping (caller named a non-canonical → 308 / rewrite or 409 / fail).
   - [ ] **L3 step 4** — wire `COSMOS_ENDPOINT` into ingest workflows

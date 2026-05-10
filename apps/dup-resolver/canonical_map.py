@@ -130,12 +130,26 @@ def _to_doc(cid: str, election: dict, run_id: str) -> dict[str, Any]:
         {"server": "", "name": election.get("winner_name", "")},
     )
 
+    # `primary` and `aliases` are projection fields the L3 APIM policies
+    # consume directly. `primary` matches the shape expected by the
+    # tools/call canonical-rewrite policy (apim/policies/canonical-rewrite.policy.xml).
+    # `aliases` is the flat list of non-canonical member doc_ids — the
+    # tools/list filter policy uses it to decide which entries to drop.
+    aliases = [m["id"] for m in members_meta if not m["is_canonical"]]
+    primary = {
+        "id": canonical_id,
+        "server": canonical_meta["server"],
+        "name": canonical_meta["name"] or election.get("winner_name", ""),
+    }
+
     return {
         "id": canonical_id,
         "canonical_id": canonical_id,
         "cluster_id": cid,
-        "canonical_server": canonical_meta["server"],
-        "canonical_name": canonical_meta["name"] or election.get("winner_name", ""),
+        "canonical_server": primary["server"],
+        "canonical_name": primary["name"],
+        "primary": primary,
+        "aliases": aliases,
         "score": float(election.get("score", 0.0)),
         "score_breakdown": dict(election.get("breakdown") or {}),
         "members": members_meta,

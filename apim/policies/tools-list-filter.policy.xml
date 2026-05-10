@@ -1,0 +1,175 @@
+<!--
+  MCP-server-scoped APIM policy: tools/list response filter.
+
+  L3 step 2 of the MCP Tool Governance design (docs/ARCHITECTURE.md §15).
+
+  WHAT IT DOES
+    On the OUTBOUND leg of an MCP `tools/list` response, fetches the
+    canonical_map for this server from Cosmos (cached 60s), then drops
+    every tool whose fully-qualified id ("<server>__<name>") appears in
+    any cluster's `aliases` array. The LLM never sees non-canonical
+    duplicates — they're rewritten away before the response leaves APIM.
+
+    Canonical and unknown tools pass through unchanged. The filter is
+    fail-open: any Cosmos error or missing map = no filtering.
+
+  ATTACH IN AZURE PORTAL
+    APIs → MCP Servers → <server> → MCP → Policies (replaces the empty
+    `<outbound>` block, or composes with any existing tools/call rewrite
+    in `<inbound>`).
+
+  PREREQUISITES
+    Same as the tools/call rewrite — see apim/policies/README.md.
+    Specifically:
+      - APIM system-assigned MI exists.
+      - MI has Cosmos DB Built-in Data Reader on
+        /dbs/governance/colls/mcp-canonical-map.
+      - Cosmos doc shape includes `aliases: [<server>__<name>, ...]`
+        (emitted by apps/dup-resolver/canonical_map.py since L3 step 1).
+
+  PLACEHOLDERS (replace before pasting; or wire as Named Values)
+    <tenant-id>            Entra tenant GUID (only if you also keep JWT validate here)
+    <server-name>          MCP server name as it appears in the doc_id prefix
+                           (e.g. "governed-mcp" or "messy-mcp"). Used to scope
+                           the canonical_map query to this server.
+    cosmoslab82658         Cosmos account host. Already targeted at the PoC
+                           pairing; change for other environments.
+
+  TELEMETRY
+    Adds a response header `x-mcp-tools-filtered: <dropped_count>` so App
+    Insights / consumers can see how many tools the gate removed.
+-->
+<policies>
+  <inbound>
+    <base />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+
+    <!-- 1. Only act on JSON-RPC `tools/list` responses with a 2xx body. -->
+    <choose>
+      <when condition="@(context.Response.StatusCode >= 200 && context.Response.StatusCode < 300)">
+
+        <set-variable name="rpcResp" value="@(context.Response.Body.As<JObject>(preserveContent: true))" />
+        <set-variable name="rpcResult" value="@(((JObject)context.Variables["rpcResp"])["result"]?["tools"] as JArray)" />
+
+        <choose>
+          <when condition="@(((JArray)context.Variables.GetValueOrDefault("rpcResult")) != null)">
+
+            <!-- 2. APIM-internal cache (60s TTL) keyed by server name.
+                 Holds a comma-separated string of fully-qualified non-canonical
+                 ids to drop. We cache the SET so we don't query Cosmos on
+                 every tools/list — busy clients can hit this dozens of times
+                 per minute. -->
+            <cache-lookup-value
+                key="@("aliasdrop:" + "<server-name>")"
+                variable-name="aliasDropCsv" />
+
+            <choose>
+              <when condition="@(!context.Variables.ContainsKey("aliasDropCsv"))">
+                <authentication-managed-identity
+                    resource="https://cosmos.azure.com"
+                    output-token-variable-name="cosmosAadToken" />
+
+                <!-- Cosmos SQL query: every cluster doc whose canonical_server
+                     OR any member.server matches THIS server. We grab the
+                     `aliases` array from each. -->
+                <send-request mode="new" response-variable-name="cosmosResp"
+                              timeout="2" ignore-error="true">
+                  <set-url>@($"https://cosmoslab82658.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs")</set-url>
+                  <set-method>POST</set-method>
+                  <set-header name="Authorization" exists-action="override">
+                    <value>@("type=aad&ver=1.0&sig=" + (string)context.Variables["cosmosAadToken"])</value>
+                  </set-header>
+                  <set-header name="x-ms-version" exists-action="override">
+                    <value>2018-12-31</value>
+                  </set-header>
+                  <set-header name="x-ms-documentdb-isquery" exists-action="override">
+                    <value>true</value>
+                  </set-header>
+                  <set-header name="x-ms-documentdb-query-enablecrosspartition" exists-action="override">
+                    <value>true</value>
+                  </set-header>
+                  <set-header name="Content-Type" exists-action="override">
+                    <value>application/query+json</value>
+                  </set-header>
+                  <set-body>@{
+                    var q = new JObject(
+                      new JProperty("query",
+                        "SELECT VALUE c.aliases FROM c WHERE c.canonical_server = @s OR EXISTS(SELECT VALUE m FROM m IN c.members WHERE m.server = @s)"),
+                      new JProperty("parameters", new JArray(
+                        new JObject(new JProperty("name", "@s"), new JProperty("value", "<server-name>"))
+                      ))
+                    );
+                    return q.ToString();
+                  }</set-body>
+                </send-request>
+
+                <set-variable name="aliasDropCsv" value="@{
+                  var resp = (IResponse)context.Variables.GetValueOrDefault("cosmosResp");
+                  if (resp == null || resp.StatusCode >= 400) return "";
+                  var docs = resp.Body.As<JObject>()["Documents"] as JArray;
+                  if (docs == null) return "";
+                  var ids = new System.Collections.Generic.List<string>();
+                  foreach (var aliasArr in docs) {
+                    if (aliasArr is JArray arr) {
+                      foreach (var a in arr) ids.Add(a.ToString());
+                    }
+                  }
+                  return string.Join(",", ids);
+                }" />
+
+                <cache-store-value
+                    key="@("aliasdrop:" + "<server-name>")"
+                    value="@((string)context.Variables["aliasDropCsv"])"
+                    duration="60" />
+              </when>
+            </choose>
+
+            <!-- 3. Filter the tools array by fully-qualified id. The MCP
+                 tools/list payload exposes only the `name` (wire name)
+                 per tool — we synthesize the id with the server prefix
+                 to match the doc_id format L2 wrote. -->
+            <set-variable name="droppedCount" value="@{
+              var dropCsv = (string)context.Variables["aliasDropCsv"];
+              if (string.IsNullOrEmpty(dropCsv)) return 0;
+              var dropSet = new System.Collections.Generic.HashSet<string>(
+                  dropCsv.Split(','), System.StringComparer.Ordinal);
+
+              var tools = (JArray)context.Variables["rpcResult"];
+              var kept = new JArray();
+              int dropped = 0;
+              foreach (var t in tools) {
+                var name = t["name"]?.ToString() ?? "";
+                var fqid = "<server-name>__" + name;
+                if (dropSet.Contains(fqid)) { dropped++; continue; }
+                kept.Add(t);
+              }
+
+              var resp = (JObject)context.Variables["rpcResp"];
+              ((JObject)resp["result"])["tools"] = kept;
+              context.Variables["rpcResp"] = resp;
+              return dropped;
+            }" />
+
+            <choose>
+              <when condition="@(((int)context.Variables["droppedCount"]) > 0)">
+                <set-body>@(((JObject)context.Variables["rpcResp"]).ToString())</set-body>
+                <set-header name="x-mcp-tools-filtered" exists-action="override">
+                  <value>@(((int)context.Variables["droppedCount"]).ToString())</value>
+                </set-header>
+              </when>
+            </choose>
+
+          </when>
+        </choose>
+      </when>
+    </choose>
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
