@@ -723,6 +723,27 @@ A second pipeline (`deploy-mcp.yml`) on merge to main:
 
 **Identical to v2 in algorithm, scoring, and storage.** This is the differentiator that v3 keeps untouched. For full detail (including the worked examples — the two-backends-one-canonical example, the `/similarity` request/response example, the three-tool single-linkage clustering example, the low-confidence election example, and the demotion impact-comment example) see [v2 §14](./MCP-Tool-Governance-POC-Plan-v2.md#14-layer-2--api-center--dup-resolver-service).
 
+> **PoC implementation note (2026-05-10).** The shipped L2 implementation
+> in `apps/dup-resolver/` realises this design with **two entry points**:
+>
+> 1. **`apps/dup-resolver/check_pr.py`** — the CI gate. Talks directly to
+>    Azure OpenAI + AI Search via `DefaultAzureCredential` (or keys in
+>    CI), with no service hop. Wired into `.github/workflows/similarity-check.yml`.
+>    It also implements three operability features the design didn't
+>    originally call out: **rename detection** (deletion-aware filter so
+>    DUPLICATE → INFO when the top hit is being deleted in the same PR),
+>    an **index freshness footer** with a **>24h staleness banner**, and
+>    **multi-file PR support**.
+> 2. **`apps/dup-resolver/main.py`** — the FastAPI service the v2 design
+>    describes (`/similarity`, `/clusters`, `/ingest`, `/healthz`). Used
+>    by the customer demo's Act 4 for the `/clusters` view; not on the
+>    CI critical path.
+>
+> Index hygiene runs as two workflows: `ingest-on-merge.yml` (per-merge
+> Option A reconciliation) + `daily-ingest.yml` (04:17 UTC backstop).
+> See `apps/dup-resolver/README.md` for the operational details
+> (perf budget, threshold tuning, index hygiene tiers).
+
 The only V3-specific deltas:
 
 1. **API Center metadata** gains `apim_mcp_server` and `apim_operation_id` fields (so a canonical record knows *which APIM MCP server URL to dispatch through*).

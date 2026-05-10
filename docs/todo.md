@@ -18,6 +18,9 @@ versions, refreshed demo transcript and threshold docs.
 - ✅ Stale-index alert (>24h → bold ⚠️ banner in `check_pr.py` footer)
 - ✅ `daily-ingest.yml` nightly backstop (04:17 UTC, same concurrency group)
 - ✅ Performance budget + index-hygiene tiers documented in dup-resolver README
+- ✅ ARCHITECTURE.md §14 backfilled with implementation-drift callout
+- ✅ Top-3 nearest neighbors as collapsible `<details>` per non-OK row
+- ✅ Threshold sweep table per non-OK row (0.85 / 0.88 / 0.92 / 0.95 + current)
 
 ## P0 — operational gaps that will bite us next demo
 
@@ -57,17 +60,8 @@ versions, refreshed demo transcript and threshold docs.
 
 ## P2 — polish
 
-- [ ] **Threshold sweep in PR comment**
-  The verdict table shows the score at the configured threshold only.
-  For borderline candidates (WARN, or DUPLICATE close to threshold),
-  optionally post a PR comment with the threshold sweep
-  (0.85 / 0.88 / 0.92 / 0.96) so reviewers can see how the verdict
-  would shift if the org tightened or loosened.
-
-- [ ] **PR comment with top-3 nearest neighbors**
-  Verdict markdown table only shows the top match. The full top-3 list
-  is already captured in `result.nearest`; render it as a collapsible
-  `<details>` block so reviewers can spot near-ties between candidates.
+_All P2 items complete in this session. Track new polish items here as
+they surface._
 
 ## P3 — exploration / future work
 

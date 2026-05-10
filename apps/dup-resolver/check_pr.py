@@ -205,6 +205,21 @@ def score_candidate(op: dict[str, Any],
 
 VERDICT_EMOJI = {"DUPLICATE": "🛑", "WARN": "⚠️", "OK": "✅", "INFO": "ℹ️"}
 
+# Threshold buckets used in the per-row sweep. The configured threshold is
+# inserted into this list at render time and de-duplicated, so reviewers can
+# always see how the verdict would shift if their org tightened or loosened.
+SWEEP_BUCKETS = (0.85, 0.88, 0.92, 0.95)
+
+
+def _verdict_at(score: float, threshold: float) -> str:
+    """Pure verdict from a score+threshold (no rename awareness — that's a
+    PR-shape signal, not a threshold one)."""
+    if score >= threshold:
+        return "DUPLICATE"
+    if score >= threshold - 0.05:
+        return "WARN"
+    return "OK"
+
 
 def render_report(results: list[dict[str, Any]]) -> str:
     if not results:
@@ -233,6 +248,53 @@ def render_report(results: list[dict[str, Any]]) -> str:
         lines.append(
             f"| {emo} {r['verdict']} | `{r['operationId']}` | `{top_str}` | {score_str} | {r['reason']} |"
         )
+
+    # Per-row details: top-3 nearest neighbors + threshold sweep for any row
+    # that isn't a clean OK. Hidden behind <details> so the main table stays
+    # readable for repos with many ops in a PR.
+    threshold = config.CLUSTER_THRESHOLD
+    detail_rows = [r for r in results if r["verdict"] != "OK"]
+    if detail_rows:
+        lines.append("")
+        lines.append("### Per-candidate detail")
+        lines.append("")
+        for r in detail_rows:
+            emo = VERDICT_EMOJI[r["verdict"]]
+            lines.append(
+                f"<details><summary>{emo} <code>{r['operationId']}</code> — "
+                f"{r['verdict']}</summary>"
+            )
+            lines.append("")
+            # Top-3 nearest neighbors
+            if r["nearest"]:
+                lines.append("**Top 3 nearest neighbors**")
+                lines.append("")
+                lines.append("| Rank | Server | Tool | Score | Canonical |")
+                lines.append("|---|---|---|---|---|")
+                for i, n in enumerate(r["nearest"], 1):
+                    canon_marker = "✓" if n.get("is_canonical") else ""
+                    lines.append(
+                        f"| {i} | `{n.get('server','—')}` | "
+                        f"`{n.get('name','—')}` | {n.get('score', 0):.3f} | {canon_marker} |"
+                    )
+                lines.append("")
+                # Threshold sweep against the top score
+                top_score = float(r["nearest"][0].get("score", 0.0))
+                buckets = sorted({*SWEEP_BUCKETS, threshold})
+                lines.append("**Threshold sweep** (top score = "
+                             f"{top_score:.3f}; current threshold = "
+                             f"**{threshold}**)")
+                lines.append("")
+                lines.append("| Threshold | Verdict |")
+                lines.append("|---|---|")
+                for t in buckets:
+                    v = _verdict_at(top_score, t)
+                    marker = " ← current" if abs(t - threshold) < 1e-9 else ""
+                    lines.append(f"| {t:.2f} | {VERDICT_EMOJI[v]} {v}{marker} |")
+            lines.append("")
+            lines.append("</details>")
+            lines.append("")
+
     if freshness:
         # Min freshness = oldest top-hit observed; helps reviewers spot a stale index.
         oldest = min(freshness)
