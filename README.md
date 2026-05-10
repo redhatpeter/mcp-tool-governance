@@ -7,7 +7,22 @@ containers required.
 
 ## Status
 
-PoC. Architecture is stable; code build-out has not started.
+PoC. Architecture is stable. **L1 (design-time lint) and L2 (similarity CI gate
++ ingest-on-merge) are shipped and live against Azure OpenAI + Azure AI Search.**
+L3 (runtime canonical rewrite at the APIM gateway) has a working smoke build —
+see `apim/policies/canonical-rewrite-smoke.policy.xml` and Act 3 of the demo.
+
+Snapshot of what's running:
+
+| Layer | Where | What |
+|---|---|---|
+| L1 | [`.github/workflows/validate-mcp-tools.yml`](.github/workflows/validate-mcp-tools.yml) | `tools-cli/lint.py` blocks bad operations at PR time. |
+| L2 | [`.github/workflows/similarity-check.yml`](.github/workflows/similarity-check.yml) | `apps/dup-resolver/check_pr.py` embeds new ops, queries `mcp-tool-fingerprints`, posts a verdict on the PR. Threshold = repo variable `CLUSTER_THRESHOLD` (this repo overrides to `0.92`). |
+| L2 | [`.github/workflows/ingest-on-merge.yml`](.github/workflows/ingest-on-merge.yml) | On every push to `main`, re-ingests `apim/openapi/*.json` and **deletes stale docs** so the index never drifts. |
+| L3 | [`apim/policies/canonical-rewrite-smoke.policy.xml`](apim/policies/canonical-rewrite-smoke.policy.xml) | MCP-server-scoped policy — three live aliases rewrite to `financeQuoteGet`. |
+| Demo | [`demo/run-demo.sh`](demo/run-demo.sh) | 5-minute push-button walkthrough. Pre-captured fallback at [`docs/samples/demo-transcript.md`](docs/samples/demo-transcript.md). |
+
+Open work tracked in [`docs/todo.md`](docs/todo.md).
 
 ## Documentation
 

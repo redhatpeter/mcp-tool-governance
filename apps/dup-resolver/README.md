@@ -28,7 +28,36 @@ Run as **library** (called by `python -m dup_resolver.ingest`) and as **thin Fas
 
 ---
 
-## Endpoints
+## How it's used
+
+Two entry points:
+
+1. **CI gate (the one that matters):** [`check_pr.py`](check_pr.py) runs in
+   [`similarity-check.yml`](../../.github/workflows/similarity-check.yml) on
+   every PR that touches `apim/openapi/*.json`. It diffs the spec against
+   `main`, embeds each new/changed operation, vector-queries
+   `mcp-tool-fingerprints`, and posts a markdown verdict back to the PR.
+   No service is required at PR time — the script talks to AOAI + AI Search
+   directly with `DefaultAzureCredential` (or keys, in CI).
+2. **Demo HTTP service (`main.py`):** an optional FastAPI surface used
+   by the customer demo (Act 4) for the `/clusters` view. Not on the
+   critical path; the demo falls back to captured samples if it's down.
+
+### `check_pr.py` — what the verdict contains
+
+- **Per-operation row:** `verdict` (DUPLICATE / WARN / OK / INFO),
+  top-match score, top-match server + tool name, threshold in effect.
+- **Rename detection** *(INFO row, exit 0):* if the top-match's tool name
+  is also being **deleted** in the same PR (computed by diffing the
+  base ref's spec against HEAD), the verdict is downgraded from DUPLICATE
+  to `ℹ️ INFO — looks like a rename, not a duplicate`. The required check
+  still passes so legitimate renames don't block merges.
+- **Index freshness footer:** the markdown report ends with
+  `Index freshness: oldest top-hit last_seen_utc = ...` so reviewers can
+  see at a glance whether the index is stale. If yes, re-run
+  `ingest-on-merge.yml` (workflow_dispatch).
+
+### Demo service endpoints (`main.py`)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -36,6 +65,20 @@ Run as **library** (called by `python -m dup_resolver.ingest`) and as **thin Fas
 | `POST` | `/ingest` | re-ingest from APIM tools/list (governed + messy) |
 | `POST` | `/similarity` | one-shot: embed body, return top-N nearest existing tools + cluster verdict |
 | `GET` | `/clusters` | dump current clusters (for the demo UI) |
+
+## Index hygiene — `ingest-on-merge` (Option A reconciliation)
+
+On every push to `main`, [`ingest-on-merge.yml`](../../.github/workflows/ingest-on-merge.yml)
+runs `python -m dup_resolver.ingest` against the freshly merged specs:
+
+1. Embed every operation from `apim/openapi/*.json`.
+2. Upsert into `mcp-tool-fingerprints` with `last_seen_utc = <now>`.
+3. **Reconcile:** compute `index_keys − authored_keys` and
+   `delete_documents()` the difference, so renamed/deleted operations
+   don't leave ghost duplicates that L2 would later flag against new PRs.
+
+The first live run dropped 8 stale camelCase ghost docs from `messy-mcp`.
+Log summary fields: `tools`, `indexed`, `stale_ids`, `deleted_stale`.
 
 ---
 
@@ -109,17 +152,33 @@ uvicorn main:app --host 0.0.0.0 --port 8089
 ## Demo flow (Act 4 — adds to the existing 3-act demo)
 
 ```bash
-# 1. Ingest current tool surfaces
+# 1. Ingest current tool surfaces (or just rely on ingest-on-merge having run)
 curl -X POST http://localhost:8089/ingest
 
 # 2. Inspect clusters
 curl -s http://localhost:8089/clusters | jq
 
-# 3. L1 CI similarity check — pretend a PR adds another get-quote tool
+# 3. L2 CI similarity check — pretend a PR adds another get-quote tool
 curl -X POST http://localhost:8089/similarity \
   -H 'Content-Type: application/json' \
   -d '{"name":"financeQuoteFetch","description":"Fetch a real-time stock quote","domain":"finance"}'
-# → {"verdict":"DUPLICATE", "cluster_id":"clu_3", "nearest":[{"id":"governed/financeQuoteGet","score":0.94}, ...]}
+# → {"verdict":"DUPLICATE", "cluster_id":"clu_3", "nearest":[{"id":"governed/financeQuoteGet","score":0.958}, ...]}
 ```
 
-The CI workflow at `.github/workflows/validate-mcp-tools.yml` calls `/similarity` for every new operation in a PR and fails the build on `DUPLICATE`.
+The **CI gate** at [`.github/workflows/similarity-check.yml`](../../.github/workflows/similarity-check.yml)
+runs `check_pr.py` (not the HTTP service) for every changed operation in a
+PR and fails the build on `DUPLICATE`. PR #1 in this repo has the captured
+live run (`DUPLICATE 0.958` at threshold `0.92`).
+
+## Local test suite
+
+```bash
+cd apps/dup-resolver && source .venv/bin/activate
+bash tests/run_scenarios.sh        # 9/9 scenarios at threshold 0.88
+CLUSTER_THRESHOLD=0.92 bash tests/run_scenarios.sh   # repo-default sweep
+```
+
+Scenarios cover: clean-no-change, novel-op (OK), exact-rename (DUPLICATE),
+strong-paraphrase (DUPLICATE), weak-paraphrase (WARN), cross-server
+(threshold-tolerant), malformed-JSON (exit 2), rename-detected (INFO,
+exit 0), and multi-file-pr (two specs in one PR).

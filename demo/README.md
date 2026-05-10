@@ -81,12 +81,18 @@ cd apps/dup-resolver && source .venv/bin/activate \
 - *"L1 catches naming drift. L3 absorbs aliases at runtime. L2 is the missing piece — what about a NEW tool that PASSES the linter but is semantically a duplicate of one we already have?"*
 
 **`/clusters` beat:**
-- *"Every tool gets embedded with `text-embedding-3-large` — 3072 dimensions — and indexed in Azure AI Search. We cluster at cosine ≥ 0.88."*
+- *"Every tool gets embedded with `text-embedding-3-large` — 3072 dimensions — and indexed in Azure AI Search. We cluster at cosine ≥ threshold."*
 - Point at the two multi-member clusters: *"`createCustomer` and `customerCreate` — same intent, two wire names. The cluster found them. We elect a canonical deterministically."*
 
 **`/similarity` beat (the headline):**
-- *"Now imagine a PR adds `financeQuoteFetch`. Different verb, plausible-looking name, no lint error. L2 says: WARN — 0.83 against `financeQuoteGet` — reviewer confirms."*
-- *"At 0.88 it'd be DUPLICATE and we fail the PR. Same code lives in `.github/workflows/similarity-check.yml`."*
+- *"Now imagine a PR adds `financeQuoteFetch`. Different verb, plausible-looking name, no lint error. L2 says: DUPLICATE — 0.958 against `financeQuoteGet` at this repo's threshold of 0.92 — required check fails, PR is blocked."*
+- *"Same code runs in CI via `.github/workflows/similarity-check.yml`. PR #1 in this repo has the captured live run."*
+- *"Threshold is a repo variable (`CLUSTER_THRESHOLD`) — orgs that prefer reviewer gates over auto-blocks can loosen it to 0.95 without a code change."*
+
+**Index hygiene beat (only if asked, or if you want the ops-credibility moment):**
+- *"On every merge to `main`, `ingest-on-merge.yml` re-embeds the specs and deletes stale docs — so renames don't leave ghost duplicates in the index."*
+- *"The verdict markdown footer reports the oldest top-hit `last_seen_utc` so reviewers can spot a stale index at a glance."*
+- *"And if the PR also DELETES the existing tool in the same diff, L2 downgrades the verdict to ℹ️ INFO — 'looks like a rename, not a duplicate.' No false-positive block on legitimate renames."*
 
 **One honest caveat (only if asked):**
 - *"The threshold is conservative on purpose. The cross-server messy ↔ governed pairs hit ~0.75 because messy descriptions are deliberately thin. WARN catches those at PR time, which is the realistic case."*

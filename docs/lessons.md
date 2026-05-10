@@ -620,3 +620,112 @@ curl -X POST "$MCP_URL" \
 **always inspect the actual wire bytes** before theorizing about the
 gateway. A 1-line ngrok session would have saved us hours of pursuing
 the wrong root-cause hypothesis.
+
+---
+
+## 2026-05-10 — `tee` swallows exit codes; CI silently passed a DUPLICATE verdict
+
+**Symptom:** `similarity-check.yml` returned green even when
+`check_pr.py` exited non-zero on a real DUPLICATE. The job log showed the
+red verdict text but the step succeeded.
+
+**Root cause:** `python check_pr.py … | tee verdict.md` returns `tee`'s
+exit code (always 0), not the script's. The synthetic duplicate test
+caught this — the gate was theatre, not a gate.
+
+**Fix:** add `set -o pipefail` at the top of the run script and quote
+your scripts as `bash -eo pipefail`. Verified by re-running PR #1 with
+the fix in place: ❌ failure on DUPLICATE, ✅ pass on OK. Commit `26d32d8`.
+
+**Generalization:** Any CI step that pipes the gate output to `tee` /
+`grep` / a paginator needs `pipefail` or the gate is a no-op.
+
+---
+
+## 2026-05-10 — Azure AI Search accumulates ghost docs without explicit reconciliation
+
+**Symptom:** After renaming a few `messy-mcp` operations from snake_case
+to camelCase upstream, the `mcp-tool-fingerprints` index still contained
+the old snake_case docs. They quietly inflated cluster sizes and
+generated false-positive DUPLICATE verdicts on clean PRs.
+
+**Root cause:** `ingest.py` originally only **upserted**. AI Search
+treats unseen-this-run docs as still-valid; nothing prunes them. With
+authored specs as the source-of-truth, the index drifts every time an
+op is renamed or removed.
+
+**Fix:** Option A reconciliation in `ingest-on-merge.yml` — after
+upserting, compute `index_keys − authored_keys` and call
+`delete_documents()` on the difference. Log the count
+(`deleted_stale: N`). First live run dropped 8 stale docs. Commit `12e865a`.
+
+**Generalization:** Any vector index used as a corpus needs an explicit
+"deletes are first-class" pass, not just upserts. Don't assume the
+upsert path will reach a steady state on its own.
+
+---
+
+## 2026-05-10 — Azure Policy `CognitiveServices_LocalAuth_Modify` re-disables AOAI key auth
+
+**Symptom:** Workflow runs that worked yesterday started failing with
+`401 Unauthorized` from AOAI. Local `curl` against the same endpoint
+also failed. Nothing in our repo changed.
+
+**Root cause:** A subscription-scoped Azure Policy
+(`CognitiveServices_LocalAuth_Modify`) periodically reverts AOAI accounts
+to AAD-only auth. Our CI was using `AOAI_API_KEY`. When policy fires,
+our key stops working.
+
+**Workaround (current):** Owner re-enables key auth manually when it
+flips off. Verified the toggle re-takes within minutes.
+
+**Long-term fix (P0, deferred):** Migrate CI → Azure auth to GitHub OIDC
++ federated credential + AAD-only auth.
+`apps/dup-resolver/config.py` already supports `DefaultAzureCredential`
+on both AOAI and Search; the missing piece is the workflow `azure/login`
+step + role assignments. See `docs/todo.md` P0 for the full step list.
+
+**Generalization:** Any subscription with Azure Policy enforcement on
+Cognitive Services LocalAuth will eventually break key-based CI. Don't
+build a CI gate that assumes key auth is permanent.
+
+---
+
+## 2026-05-10 — `gh variable` is the right knob for tunable thresholds
+
+**Symptom:** `CLUSTER_THRESHOLD` was hard-coded in `config.py`. Tightening
+it from `0.88` to `0.92` for this repo's demo would have required a code
+change on every fork, and would muddy the design-default story.
+
+**Fix:** Read it from a GitHub repo variable in the workflow
+(`${{ vars.CLUSTER_THRESHOLD }}`), export as env, let `config.py` fall
+back to `0.88` when unset. `gh variable set CLUSTER_THRESHOLD --body 0.92`
+is the only command needed to override per-repo. Commit `f1a533f`.
+
+**Generalization:** For any "knob the user might want to turn without
+forking the code" — threshold, region, model name — prefer GitHub
+**variables** (visible to the workflow log, no secret machinery) over
+**secrets**. Secrets are for credentials; variables are for policy.
+
+---
+
+## 2026-05-10 — WSL `az.exe` output has trailing `\r\n` that breaks URL/env-var consumers
+
+**Symptom:** `SUB=$(az.exe account show --query id -o tsv)` followed by
+`curl https://.../subscriptions/$SUB/...` returned 404. The URL looked
+correct on screen but contained an invisible `\r` before the path
+separator.
+
+**Root cause:** When `az` is invoked as `az.exe` from WSL, its stdout
+goes through the Windows `cmd` shell, which terminates lines with
+`\r\n`. WSL bash captures both characters in `$()` substitution.
+
+**Fix:** Always pipe through `tr -d '\r\n'`:
+```bash
+SUB=$(az.exe account show --query id -o tsv | tr -d '\r\n')
+```
+
+**Generalization:** Any value coming from `az.exe`, `gh.exe`, or any
+Windows binary used from WSL needs CR-stripping before it's pasted into
+a URL, env var, or HTTP header. Pure-WSL `az` (installed via `apt`)
+does not have this problem.
