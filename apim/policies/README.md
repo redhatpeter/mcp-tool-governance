@@ -156,7 +156,28 @@ once L3 is in production.
 
 ## Testing
 
-There is no automated test for either policy yet. Manual smoke tests:
+**Automated:** [`apps/dup-resolver/tests/validate_policies.py`](../../apps/dup-resolver/tests/validate_policies.py)
+replays the exact Cosmos SQL each policy issues against the live
+`mcp-canonical-map` container and asserts the expected behavior across
+8 scenarios (3 alias resolutions, 1 already-canonical, 1 singleton, 1
+unknown fail-open, 2 `tools/list` drop-set cases). Wired into the
+[`policy-tests.yml`](../../.github/workflows/policy-tests.yml) CI gate;
+latest green run
+[25637828620](https://github.com/redhatpeter/mcp-tool-governance/actions/runs/25637828620).
+A verdict-tier regression test
+([`tests/test_verdict_tiers.py`](../../apps/dup-resolver/tests/test_verdict_tiers.py))
+locks the DUPLICATE / WARN / REVIEW / OK / INFO band boundaries plus
+four real-world cross-vendor REVIEW examples.
+
+**Live deployment status (2026-05-10):** both policies are attached to
+`governed-mcp` and `messy-mcp` on `apimopenai99`. Live captures:
+`messy-mcp/tools/list` → `x-mcp-tools-filtered: 3`;
+`messy-mcp/tools/call createCustomer` → `x-mcp-canonical-rewrite:
+createCustomer -> customerCreate`. See
+[`docs/samples/demo-transcript.md`](../../docs/samples/demo-transcript.md)
+addendum section A for the full curl evidence.
+
+**Manual smoke tests** (for re-deploy in a new environment):
 
 ### `canonical-rewrite.policy.xml` (tools/call)
 
@@ -188,4 +209,6 @@ There is no automated test for either policy yet. Manual smoke tests:
    - App Insights shows the filter header in the response trace.
 5. Re-issue within 60s; verify cache hit.
 
-A scripted version of these will land in `tools-cli/` during PoC week 1.
+A scripted version of these lives in
+[`apps/dup-resolver/tests/validate_policies.py`](../../apps/dup-resolver/tests/validate_policies.py)
+and runs in CI on every change to the policies or the writer.

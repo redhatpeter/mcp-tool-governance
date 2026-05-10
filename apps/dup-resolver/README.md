@@ -284,15 +284,23 @@ python3 eval_threshold.py --compare                                  # A/B all v
 python3 eval_threshold.py --variant synonyms                         # single non-default
 ```
 
-The current pair set is small (~25 hand-curated pairs from the two demo
-specs) and is intentionally **stress-loaded** with hard cases —
-syntactic/semantic/cross-server duplicates plus hard negatives like
-"same domain different entity" and "same entity different action". Read
+The current pair set has **76 hand-curated pairs** (33 duplicates, 43
+novels) — 26 from the two demo specs plus 50 real-world pairs sourced
+from canonical `modelcontextprotocol/servers` reference repos and widely-
+used third-party MCP servers (linear, jira, notion, confluence, slack,
+discord, dropbox, gdrive, postgres, mysql, sqlite, redis, memcached,
+aws-s3, gcs, kubernetes, helm, docker, sentry, rollbar, stripe, square,
+playwright, puppeteer, fetch, brave-search, memory, github, gitlab).
+Intentionally **stress-loaded** with hard cases: syntactic/semantic/
+cross-server/cross-vendor duplicates plus hard negatives like "same
+domain different entity" and "same entity different action". Read
 [`docs/eval/precision-recall.md`](../../docs/eval/precision-recall.md)
-for the latest numbers; the headline is that L2 is high-precision
-(false positives are rare at any threshold ≥ 0.85) and lower-recall —
-which is exactly why L3 exists. Grow the labeled set whenever a real
-PR exposes a new failure mode.
+for the latest numbers. **Headline:** precision **1.000** at the production
+threshold 0.92 (0 false positives over 43 novels) — the hard block is
+robust. Recall at 0.92 is 0.091; the REVIEW band at 0.65 (shipped 2026-
+05-10) recovers ~64 % of duplicates as soft "reviewer should look" PR
+surfaces. Grow the labeled set whenever a real PR exposes a new failure
+mode.
 
 ### Fingerprint variants (offline A/B)
 
@@ -308,12 +316,18 @@ fingerprint shapes (defined inline in the eval script — production
 | `description-heavy` | Repeat the description as a second `intent:` line (semantic weight)  |
 | `combined`          | no-domain + synonyms + description-heavy stacked                     |
 
-Latest run on the 26-pair set ranked the variants by separability margin:
-`combined` (−0.028) > `synonyms` (−0.030) > `no-domain` (−0.073) > `baseline`
-(−0.076) > `description-heavy` (−0.094). Synonym normalization roughly
-halves the overlap. **No production change yet** — 26 pairs isn't enough
-evidence to invalidate the index and re-ingest. Revisit when the labeled
-set reaches ≈50 real-world pairs.
+Latest run on the **76-pair set** (2026-05-10) ranked variants by
+separability margin (less negative = better): `description-heavy` (−0.215)
+> `baseline` (−0.264) > `synonyms` (−0.286) > `combined` (−0.312) >
+`no-domain` (−0.359). The variant ranking **flipped** when the set grew
+from 26 → 76 pairs and added vendor diversity (linear/jira/notion/etc.):
+`combined` was the leader at 26 pairs but now has the worst margin
+because same-domain prose lifts novel scores faster than true-duplicate
+scores. **Production fingerprint stays at `baseline`.** The two-tier
+verdict (DUPLICATE ≥ 0.92 hard block, REVIEW ≥ 0.65 soft surface) is the
+architectural fix for the embedding ceiling — see
+[`docs/eval/precision-recall.md`](../../docs/eval/precision-recall.md).
+Grow further only if a customer-specific corpus changes the picture.
 
 ## Canonical map — L2 → L3 handoff
 

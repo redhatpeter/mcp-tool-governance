@@ -1,8 +1,13 @@
 # Tools CLI
 
 Operational utilities for the MCP Tool Governance PoC. Currently a thin
-collection of scripts; will grow into a proper CLI (registry validation,
-canonical_map sync, eval kickoff) during PoC week 1.
+collection of scripts; the L1 lint (`lint.py`) is the load-bearing piece
+and runs in the
+[`validate-mcp-tools.yml`](../.github/workflows/validate-mcp-tools.yml)
+CI gate. The seed script below is for one-time bootstrap of an empty
+`mcp-canonical-map` container (production writes come from
+[`apps/dup-resolver/canonical_map.py`](../apps/dup-resolver/canonical_map.py)
+on every push to `main`).
 
 ## Setup
 

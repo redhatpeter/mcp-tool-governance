@@ -782,3 +782,128 @@ SUB=$(az.exe account show --query id -o tsv | tr -d '\r\n')
 Windows binary used from WSL needs CR-stripping before it's pasted into
 a URL, env var, or HTTP header. Pure-WSL `az` (installed via `apt`)
 does not have this problem.
+
+---
+
+## 2026-05-10 (PM) — Embedding-only similarity has a ceiling; two-tier verdict is the structural fix
+
+**Symptom:** Growing the labeled set 26 → 42 → 76 pairs dropped recall at
+production threshold 0.92 from ~21 % to 9 % while precision stayed at
+1.000. The instinct was to tune the threshold or the fingerprint shape;
+neither helped.
+
+**Root cause:** The highest-scoring novel rose to 0.810
+(`jira/get_issue` vs `jira/get_project`) — same product, different
+entities — while genuine cross-vendor duplicates like
+`linear/createIssue` vs `jira/create_issue` clustered at 0.599.
+Vendor-specific description prose dominates the embedding signal more
+than the shared intent. **No single threshold can cleanly separate
+these classes** when the corpus has real vendor diversity.
+
+**What we did:** Added a two-tier verdict (DUPLICATE ≥ 0.92 hard block,
+REVIEW ≥ 0.65 soft surface in PR comment). REVIEW recovers ~64 % of
+the duplicates DUPLICATE/WARN miss, with reviewer judgment as the
+safety net. Zero precision cost on the 76-pair set.
+
+**Generalization:** When precision is non-negotiable but recall has
+hit an embedding-only ceiling, **add tiers, don't tune the knob**.
+A single-threshold model that can't separate cleanly will never
+become one through fingerprint variant tweaking — every variant we
+tried made same-domain-novels rise faster than true-duplicates.
+The real next investment is a **second signal** (schema-overlap
+Jaccard over required params, or an action-verb taxonomy) combined
+via calibrated logistic regression. Tracked as a §24.A.2 item.
+
+---
+
+## 2026-05-10 (PM) — Always size labeled sets against vendor diversity, not pair count
+
+**Symptom:** At 26 pairs (all in-repo), the `combined` fingerprint
+variant was the clear winner (margin −0.028). At 42 pairs (after
+adding 16 real-world cross-vendor pairs), `combined` still won
+(margin −0.167). At 76 pairs (50 real-world), `combined` was the
+**worst** variant on margin (−0.312).
+
+**Root cause:** The 26-pair set was self-similar — all from two specs
+in the same repo. Variants that compressed semantic axes looked
+better because the test set rewarded compression. Adding
+linear/jira/notion/confluence/dropbox/etc. broke the symmetry: now the
+variants that compressed semantic axes started compressing across
+*vendors* too, lifting same-domain-novel scores.
+
+**Generalization:** A labeled set is not characterized by its size
+but by its *diversity*. 25 pairs from 2 repos teach you about
+those 2 repos. 50 pairs from 30 repos teach you about
+distributional drift. Before changing any production knob, ask:
+*does this labeled set look like the production corpus, or only
+like the demo specs?* If the latter, the optimization is theatre.
+This is why 24.A.2 calls out per-customer threshold calibration
+as a pilot deliverable.
+
+---
+
+## 2026-05-10 (PM) — APIM-MCP body forwarding is a regression of the March 2026 fix
+
+**Symptom:** `tools/call` with multi-property `params.arguments`
+arrives at the backend as the **last property's raw scalar value**
+(`Content-Length: 3`, body `CCC`) instead of the assembled JSON
+object. Backend returns 422 `json_invalid` on every call.
+
+**Root cause:** Regression of the fix shipped in
+`release-service-2026-03` ("Resolved issue where MCP POST request
+bodies were not forwarded to backend APIs"). Pre-fix bug was
+`Content-Length: 0`; post-fix bug forwards one property as a scalar.
+APIM-MCP's JSON-RPC parser consumes the request stream **upstream**
+of both MCP-server-scope and source-API-scope policy chains, so
+neither documented community workaround
+([Q&A 4371821][q1] body unwrap, [Q&A 5597117][q2] preserve-and-replay)
+applies.
+
+[q1]: https://learn.microsoft.com/en-us/answers/questions/4371821/
+[q2]: https://learn.microsoft.com/en-us/answers/questions/5597117/
+
+**Triage:** Reproduces with all custom policies stripped to `<base/>`.
+Governance layer is provably innocent — `tools/list` filter and
+`tools/call` rewrite still fire correctly (`x-mcp-tools-filtered: 3`,
+`x-mcp-canonical-rewrite: ...` headers present). The bug is
+between APIM-MCP's body assembly and the backend dispatch.
+
+**Tracked at:** [Azure-Samples/AI-Gateway#315](https://github.com/Azure-Samples/AI-Gateway/issues/315).
+Drafts ready under `docs/external/` for posting on #315 + opening an
+Azure Support ticket against `apimopenai99`.
+
+**Generalization:** When a bug reproduces with `<base/>`-only policies,
+stop investigating your own code. Check the platform release notes
+first (search for the API surface name + the symptom phrase). The
+March-2026 release-notes one-liner saved a half-day of policy-
+debugging.
+
+---
+
+## 2026-05-10 (PM) — `ImportError` at test collection from import-time `RuntimeError` in `config`
+
+**Symptom:** `policy-tests.yml` `unit-tests` job failed with
+`RuntimeError: AOAI_ENDPOINT is required` during pytest collection,
+not during any test. No test was actually run.
+
+**Root cause:** `apim_wirenames.py` imports `config`, which calls
+`_env("AOAI_ENDPOINT", required=True)` at module import time.
+`pytest --collect-only` imports every test file, which transitively
+imports `apim_wirenames`, which imports `config`. The unit-tests
+job didn't have AOAI/SEARCH env vars because the tests don't need
+them.
+
+**Fix:** Add placeholder env vars to the `unit-tests` step (same
+pattern the `policy-contract` job already had):
+```yaml
+env:
+  AOAI_ENDPOINT: https://placeholder.openai.azure.com
+  SEARCH_ENDPOINT: https://placeholder.search.windows.net
+```
+
+**Generalization:** Any module that raises at import time creates a
+test-collection footgun. Either (a) defer the validation to first
+*use* (lazy property), or (b) provide harmless placeholders in CI.
+We chose (b) because the validation is genuinely useful at app
+startup. If we ever add a third CI job, it'll need the same pattern
+— consider extracting to a workflow-level `defaults.run.env` block.
