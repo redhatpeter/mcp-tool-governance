@@ -1,0 +1,5 @@
+streamlit>=1.36
+openai>=1.40
+azure-identity>=1.17
+requests>=2.31
+PyYAML>=6.0

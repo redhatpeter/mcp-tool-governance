@@ -13,6 +13,12 @@
 #                         (messy scoring: picked ∈ acceptable_messy)
 #                         If empty, no messy tool is correct → baseline expected
 #                         to fail, exposing the governance gap.
+#   category            — UI grouping for the demo frontend
+#                         (Customer lookup / Customer search / Invoice by ID /
+#                          Invoice list / Stock quote)
+#   demo_priority       — high|low; the frontend stars high-priority prompts
+#   narrator_note       — one-liner shown as a tooltip in the demo UI to
+#                         help the presenter narrate what to look for.
 #
 # Coverage: 5 governed GET ops × 4 prompts = 20.
 # Diversity: paraphrases, indirect phrasing, missing-arg cases (model should
@@ -20,108 +26,207 @@
 # ---------------------------------------------------------------------------
 
 prompts:
-
-  # ---- financeCustomerGet (GET /governed/customers/{id}) ----
-  - id: cust-get-01
-    prompt: "Look up customer c-001 and tell me their email."
-    expected_canonical: financeCustomerGet
-    acceptable_messy: [customerLookup, customerFind]
-
-  - id: cust-get-02
-    prompt: "What tier is customer c-007?"
-    expected_canonical: financeCustomerGet
-    acceptable_messy: [customerLookup, customerFind]
-
-  - id: cust-get-03
-    prompt: "Pull the customer record for ID c-014."
-    expected_canonical: financeCustomerGet
-    acceptable_messy: [customerLookup, customerFind]
-
-  - id: cust-get-04
-    prompt: "Show me the details for customer c-002."
-    expected_canonical: financeCustomerGet
-    acceptable_messy: [customerLookup, customerFind]
-
-  # ---- financeCustomerSearch (GET /governed/customers?q=) ----
-  - id: cust-search-01
-    prompt: "Find every customer whose name contains 'Acme'."
-    expected_canonical: financeCustomerSearch
-    acceptable_messy: [customerSearch, customerFind, customerLookup]
-
-  - id: cust-search-02
-    prompt: "I need to see all customers in the gold tier."
-    expected_canonical: financeCustomerSearch
-    acceptable_messy: [customerSearch, customerFind, customerLookup]
-
-  - id: cust-search-03
-    prompt: "Search for customers with 'corp' in their name."
-    expected_canonical: financeCustomerSearch
-    acceptable_messy: [customerSearch, customerFind, customerLookup]
-
-  - id: cust-search-04
-    prompt: "Which customers have an @example.com email?"
-    expected_canonical: financeCustomerSearch
-    acceptable_messy: [customerSearch, customerFind, customerLookup]
-
-  # ---- financeInvoiceGet (GET /governed/invoices/{id}) ----
-  - id: inv-get-01
-    prompt: "Fetch invoice INV-1001 — I need the line items."
-    expected_canonical: financeInvoiceGet
-    acceptable_messy: [lookup]
-
-  - id: inv-get-02
-    prompt: "What's the status of invoice INV-2042?"
-    expected_canonical: financeInvoiceGet
-    acceptable_messy: [lookup]
-
-  - id: inv-get-03
-    prompt: "Pull up invoice number INV-9988 for me."
-    expected_canonical: financeInvoiceGet
-    acceptable_messy: [lookup]
-
-  - id: inv-get-04
-    prompt: "I need the details on invoice INV-3331."
-    expected_canonical: financeInvoiceGet
-    acceptable_messy: [lookup]
-
-  # ---- financeInvoiceList (GET /governed/invoices?customer_id=&status=) ----
-  - id: inv-list-01
-    prompt: "List all invoices for customer c-001."
-    expected_canonical: financeInvoiceList
-    acceptable_messy: [list]
-
-  - id: inv-list-02
-    prompt: "Show me every unpaid invoice."
-    expected_canonical: financeInvoiceList
-    acceptable_messy: [list]
-
-  - id: inv-list-03
-    prompt: "What invoices does Acme Corp have outstanding?"
-    expected_canonical: financeInvoiceList
-    acceptable_messy: [list]
-
-  - id: inv-list-04
-    prompt: "Give me a list of all paid invoices from this quarter."
-    expected_canonical: financeInvoiceList
-    acceptable_messy: [list]
-
-  # ---- financeQuoteGet (GET /governed/quotes/{symbol}) ----
-  - id: quote-get-01
-    prompt: "What's the current price of MSFT?"
-    expected_canonical: financeQuoteGet
-    acceptable_messy: []   # messy-mcp has no quote tool — baseline should fail
-
-  - id: quote-get-02
-    prompt: "Get me a quote for NVDA."
-    expected_canonical: financeQuoteGet
-    acceptable_messy: []
-
-  - id: quote-get-03
-    prompt: "How much is one share of AAPL trading at?"
-    expected_canonical: financeQuoteGet
-    acceptable_messy: []
-
-  - id: quote-get-04
-    prompt: "Give me the latest stock quote for AMZN."
-    expected_canonical: financeQuoteGet
-    acceptable_messy: []
+- id: cust-get-01
+  prompt: Look up customer c-001 and tell me their email.
+  expected_canonical: financeCustomerGet
+  acceptable_messy:
+  - customerLookup
+  - customerFind
+  category: Customer lookup
+  demo_priority: low
+  narrator_note: >-
+    Both servers find the right tool. Notice the messy server picks customerLookup or customerFind — whichever it
+    sees first — non-deterministically.
+- id: cust-get-02
+  prompt: What tier is customer c-007?
+  expected_canonical: financeCustomerGet
+  acceptable_messy:
+  - customerLookup
+  - customerFind
+  category: Customer lookup
+  demo_priority: low
+  narrator_note: >-
+    Both servers find the right tool. Notice the messy server picks customerLookup or customerFind — whichever it
+    sees first — non-deterministically.
+- id: cust-get-03
+  prompt: Pull the customer record for ID c-014.
+  expected_canonical: financeCustomerGet
+  acceptable_messy:
+  - customerLookup
+  - customerFind
+  category: Customer lookup
+  demo_priority: low
+  narrator_note: >-
+    Both servers find the right tool. Notice the messy server picks customerLookup or customerFind — whichever it
+    sees first — non-deterministically.
+- id: cust-get-04
+  prompt: Show me the details for customer c-002.
+  expected_canonical: financeCustomerGet
+  acceptable_messy:
+  - customerLookup
+  - customerFind
+  category: Customer lookup
+  demo_priority: low
+  narrator_note: >-
+    Both servers find the right tool. Notice the messy server picks customerLookup or customerFind — whichever it
+    sees first — non-deterministically.
+- id: cust-search-01
+  prompt: Find every customer whose name contains 'Acme'.
+  expected_canonical: financeCustomerSearch
+  acceptable_messy:
+  - customerSearch
+  - customerFind
+  - customerLookup
+  category: Customer search
+  demo_priority: low
+  narrator_note: >-
+    Governed picks financeCustomerSearch. Messy picks one of three near-duplicates the LLM sees as equivalent.
+- id: cust-search-02
+  prompt: I need to see all customers in the gold tier.
+  expected_canonical: financeCustomerSearch
+  acceptable_messy:
+  - customerSearch
+  - customerFind
+  - customerLookup
+  category: Customer search
+  demo_priority: high
+  narrator_note: >-
+    The 'gold tier' prompt that originally went 0/3 — the enriched description (mentions tier/segment/status) now
+    makes it work 3/3.
+- id: cust-search-03
+  prompt: Search for customers with 'corp' in their name.
+  expected_canonical: financeCustomerSearch
+  acceptable_messy:
+  - customerSearch
+  - customerFind
+  - customerLookup
+  category: Customer search
+  demo_priority: low
+  narrator_note: >-
+    Governed picks financeCustomerSearch. Messy picks one of three near-duplicates the LLM sees as equivalent.
+- id: cust-search-04
+  prompt: Which customers have an @example.com email?
+  expected_canonical: financeCustomerSearch
+  acceptable_messy:
+  - customerSearch
+  - customerFind
+  - customerLookup
+  category: Customer search
+  demo_priority: low
+  narrator_note: >-
+    Governed picks financeCustomerSearch. Messy picks one of three near-duplicates the LLM sees as equivalent.
+- id: inv-get-01
+  prompt: Fetch invoice INV-1001 — I need the line items.
+  expected_canonical: financeInvoiceGet
+  acceptable_messy:
+  - lookup
+  category: Invoice by ID
+  demo_priority: high
+  narrator_note: >-
+    Messy server's only invoice tool is named 'lookup' with a vague description; the LLM cannot figure out what
+    it does.
+- id: inv-get-02
+  prompt: What's the status of invoice INV-2042?
+  expected_canonical: financeInvoiceGet
+  acceptable_messy:
+  - lookup
+  category: Invoice by ID
+  demo_priority: high
+  narrator_note: >-
+    Messy server only has a generic 'lookup' tool with a vague description — the LLM doesn't know what it does and
+    skips it. Governed picks financeInvoiceGet every time.
+- id: inv-get-03
+  prompt: Pull up invoice number INV-9988 for me.
+  expected_canonical: financeInvoiceGet
+  acceptable_messy:
+  - lookup
+  category: Invoice by ID
+  demo_priority: high
+  narrator_note: >-
+    Messy server only has a generic 'lookup' tool with a vague description — the LLM doesn't know what it does and
+    skips it. Governed picks financeInvoiceGet every time.
+- id: inv-get-04
+  prompt: I need the details on invoice INV-3331.
+  expected_canonical: financeInvoiceGet
+  acceptable_messy:
+  - lookup
+  category: Invoice by ID
+  demo_priority: high
+  narrator_note: >-
+    Messy server only has a generic 'lookup' tool with a vague description — the LLM doesn't know what it does and
+    skips it. Governed picks financeInvoiceGet every time.
+- id: inv-list-01
+  prompt: List all invoices for customer c-001.
+  expected_canonical: financeInvoiceList
+  acceptable_messy:
+  - list
+  category: Invoice list
+  demo_priority: low
+  narrator_note: >-
+    Both surfaces find the right tool. The Acme Corp one (#3) shows the agent doing a 2-step plan: search customer
+    first, then list their invoices.
+- id: inv-list-02
+  prompt: Show me every unpaid invoice.
+  expected_canonical: financeInvoiceList
+  acceptable_messy:
+  - list
+  category: Invoice list
+  demo_priority: low
+  narrator_note: >-
+    Both surfaces find the right tool. The Acme Corp one (#3) shows the agent doing a 2-step plan: search customer
+    first, then list their invoices.
+- id: inv-list-03
+  prompt: What invoices does Acme Corp have outstanding?
+  expected_canonical: financeInvoiceList
+  acceptable_messy:
+  - list
+  category: Invoice list
+  demo_priority: high
+  narrator_note: >-
+    The 'Acme Corp' prompt — agent does a 2-step plan: financeCustomerSearch -> financeInvoiceList. Watch the chained
+    tool calls.
+- id: inv-list-04
+  prompt: Give me a list of all paid invoices from this quarter.
+  expected_canonical: financeInvoiceList
+  acceptable_messy:
+  - list
+  category: Invoice list
+  demo_priority: low
+  narrator_note: >-
+    Both surfaces find the right tool. The Acme Corp one (#3) shows the agent doing a 2-step plan: search customer
+    first, then list their invoices.
+- id: quote-get-01
+  prompt: What's the current price of MSFT?
+  expected_canonical: financeQuoteGet
+  acceptable_messy: []
+  category: Stock quote
+  demo_priority: high
+  narrator_note: >-
+    Headline prompt: 'What's the current price of MSFT?' — pure governance win, messy has nothing close.
+- id: quote-get-02
+  prompt: Get me a quote for NVDA.
+  expected_canonical: financeQuoteGet
+  acceptable_messy: []
+  category: Stock quote
+  demo_priority: high
+  narrator_note: >-
+    Messy server has NO quote tool at all — the LLM either declines or makes up an answer. Governed picks financeQuoteGet
+    100% of the time. This is the cleanest 'before vs after' to show.
+- id: quote-get-03
+  prompt: How much is one share of AAPL trading at?
+  expected_canonical: financeQuoteGet
+  acceptable_messy: []
+  category: Stock quote
+  demo_priority: high
+  narrator_note: >-
+    Messy server has NO quote tool at all — the LLM either declines or makes up an answer. Governed picks financeQuoteGet
+    100% of the time. This is the cleanest 'before vs after' to show.
+- id: quote-get-04
+  prompt: Give me the latest stock quote for AMZN.
+  expected_canonical: financeQuoteGet
+  acceptable_messy: []
+  category: Stock quote
+  demo_priority: high
+  narrator_note: >-
+    Messy server has NO quote tool at all — the LLM either declines or makes up an answer. Governed picks financeQuoteGet
+    100% of the time. This is the cleanest 'before vs after' to show.
