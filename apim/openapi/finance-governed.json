@@ -105,11 +105,11 @@
                         "required": false,
                         "schema": {
                             "type": "string",
-                            "description": "Search query \u2014 partial match on customer name or email. Case-insensitive.",
+                            "description": "Free-text query. Matches partially and case-insensitively against customer name, email, segment, and tier label (e.g. 'gold', 'platinum'). Also accepts simple filter syntax like 'tier:gold' or 'status:active'. Pass an empty string to list all customers (paged).",
                             "default": "",
                             "title": "Q"
                         },
-                        "description": "Search query \u2014 partial match on customer name or email. Case-insensitive."
+                        "description": "Free-text query. Matches partially and case-insensitively against customer name, email, segment, and tier label (e.g. 'gold', 'platinum'). Also accepts simple filter syntax like 'tier:gold' or 'status:active'. Pass an empty string to list all customers (paged)."
                     }
                 ],
                 "responses": {
@@ -138,7 +138,7 @@
                         }
                     }
                 },
-                "description": "Search customers by partial match on name or email. USE WHEN you need to find a customer by descriptive text, or BEFORE creating a new customer to check for duplicates. DO NOT USE for exact id lookup \u2014 use financeCustomerGet instead. Returns up to 25 matches ranked by relevance."
+                "description": "Search and filter the customer directory. USE WHEN you need to find customer(s) by ANY descriptive attribute (name, email, segment, tier such as gold/silver/platinum, or status such as active/churned/prospect) OR to enumerate a cohort (e.g. 'all gold-tier customers', 'every customer with @example.com email'). Also USE BEFORE creating a new customer, to check for duplicates. Also USE to resolve a company name to a customer_id when a downstream tool needs the id (e.g. before calling financeInvoiceList for a named company). DO NOT USE for exact customer_id lookup; use financeCustomerGet instead. The query parameter accepts free text or simple filter syntax like 'tier:gold'. Returns up to 25 matches ranked by relevance."
             }
         },
         "/governed/invoices/{invoice_id}": {

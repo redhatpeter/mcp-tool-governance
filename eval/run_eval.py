@@ -51,6 +51,7 @@ AOAI_API_VERSION = os.environ.get("AOAI_API_VERSION", "2024-10-21")
 APIM_BASE = os.environ.get("APIM_BASE", "https://apimopenai99.azure-api.net")
 APIM_KEY = os.environ.get("APIM_KEY") or Path("/tmp/apim-master-key.txt").read_text().strip()
 RUNS = int(os.environ.get("EVAL_RUNS", "3"))
+MAX_TURNS = int(os.environ.get("EVAL_MAX_TURNS", "3"))
 
 CONFIGS = {
     "A_messy": f"{APIM_BASE}/messy-mcp/mcp",
@@ -139,37 +140,84 @@ def build_openai_client() -> AzureOpenAI:
     )
 
 
-def run_one(client: AzureOpenAI, tools: list[dict], prompt: str) -> tuple[str | None, float]:
-    """Returns (picked_tool_name, latency_seconds). picked_tool_name is None
-    if the model declined to call any tool."""
-    t0 = time.perf_counter()
-    resp = client.chat.completions.create(
-        model=AOAI_DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
+def _synthetic_tool_result(name: str, args_json: str) -> str:
+    """Return a plausible JSON tool-result so the model can plan a next call.
+
+    The eval is interested in *which tool the model picks*, not in real data.
+    We hand back a small grab-bag of fields covering the most common id types
+    so any follow-up call has the values it needs.
+    """
+    return json.dumps({
+        "customer_id": "cust-42",
+        "customers": [
+            {"customer_id": "cust-42", "name": "Acme Corp", "tier": "gold", "email": "ops@acme.example.com"}
         ],
-        tools=tools,
-        tool_choice="auto",
-        temperature=0,
-    )
+        "invoice_id": "inv-1001",
+        "invoices": [
+            {"invoice_id": "inv-1001", "customer_id": "cust-42", "amount": 1234.50, "status": "sent"}
+        ],
+        "_eval_note": f"synthetic result for {name}",
+    })
+
+
+def run_one(client: AzureOpenAI, tools: list[dict], prompt: str,
+            max_turns: int = MAX_TURNS) -> tuple[list[str], float]:
+    """Run up to ``max_turns`` of tool-call back-and-forth.
+
+    Returns ``(picked_tools_in_order, total_latency_seconds)``. ``picked_tools``
+    is the list of tool names the model invoked across turns (with the dedupe
+    suffix ``_2`` etc. stripped). An empty list means the model declined to
+    call any tool. We feed back a synthetic JSON result for each call so the
+    model can chain (e.g. resolve company name -> customer_id -> list invoices).
+    """
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
+    picked: list[str] = []
+    t0 = time.perf_counter()
+    for _turn in range(max_turns):
+        resp = client.chat.completions.create(
+            model=AOAI_DEPLOYMENT,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0,
+        )
+        msg = resp.choices[0].message
+        if not msg.tool_calls:
+            break
+        # Append the assistant turn (with tool_calls) so the next turn has context.
+        messages.append({
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in msg.tool_calls
+            ],
+        })
+        for tc in msg.tool_calls:
+            name = re.sub(r"_\d+$", "", tc.function.name)
+            picked.append(name)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": _synthetic_tool_result(name, tc.function.arguments),
+            })
     dt = time.perf_counter() - t0
-    msg = resp.choices[0].message
-    if not msg.tool_calls:
-        return None, dt
-    picked = msg.tool_calls[0].function.name
-    # un-dedupe: financeFoo_2 -> financeFoo
-    picked = re.sub(r"_\d+$", "", picked)
     return picked, dt
 
 
-def is_correct(config: str, picked: str | None, expected: str, acceptable: list[str]) -> bool:
-    if picked is None:
+def is_correct(config: str, picked: list[str], expected: str, acceptable: list[str]) -> bool:
+    if not picked:
         return False
     if config == "B_governed":
-        return picked == expected
-    # A_messy: any acceptable alias counts
-    return picked in acceptable
+        return expected in picked
+    return any(p in acceptable for p in picked)
 
 
 def main() -> int:
@@ -193,7 +241,7 @@ def main() -> int:
     runs_path = RESULTS / "runs.csv"
     with runs_path.open("w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["config", "prompt_id", "run", "expected", "picked", "correct", "latency_s"])
+        w.writerow(["config", "prompt_id", "run", "expected", "picked", "correct", "latency_s", "turns"])
 
         totals: dict[str, list[bool]] = defaultdict(list)
         per_prompt: dict[tuple[str, str], list[bool]] = defaultdict(list)
@@ -205,20 +253,23 @@ def main() -> int:
                         picked, dt = run_one(client, tools, p["prompt"])
                     except Exception as e:
                         print(f"  [err] {config} {p['id']} run {run}: {e}", file=sys.stderr)
-                        picked, dt = None, 0.0
+                        picked, dt = [], 0.0
                     correct = is_correct(config, picked, p["expected_canonical"],
                                          p.get("acceptable_messy") or [])
+                    picked_str = ">".join(picked) if picked else ""
                     w.writerow([config, p["id"], run, p["expected_canonical"],
-                                picked or "", correct, f"{dt:.3f}"])
+                                picked_str, correct, f"{dt:.3f}", len(picked)])
                     totals[config].append(correct)
                     per_prompt[(config, p["id"])].append(correct)
-                    print(f"  {config:12} {p['id']:14} run{run}  picked={picked!s:30} {'OK' if correct else 'X'}")
+                    print(f"  {config:12} {p['id']:14} run{run}  picked={picked_str!s:40} {'OK' if correct else 'X'}")
 
     # Summary
     summary = ["# Eval Summary", ""]
     summary.append(f"- Deployment: `{AOAI_DEPLOYMENT}`")
-    summary.append(f"- Prompts: {len(prompts)}, runs/prompt: {RUNS}")
+    summary.append(f"- Prompts: {len(prompts)}, runs/prompt: {RUNS}, max turns/run: {MAX_TURNS}")
     summary.append(f"- Total invocations per config: {len(prompts) * RUNS}")
+    summary.append("- Scoring: a run is **correct** if the expected tool appears in *any* turn "
+                   "(multi-turn agent loop with synthetic tool results between turns).")
     summary.append("")
     summary.append("## Correct-tool rate")
     summary.append("")
