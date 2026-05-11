@@ -7,7 +7,7 @@ substituted), and PUTs it to APIM.
 Smoke variant differs from production only in:
   - <validate-jwt> commented out
   - <rate-limit-by-key> commented out
-  - <server-name> placeholder replaced with the actual API name
+  - {{server-name}} placeholder replaced with the actual API name
   - Cosmos AAD via <authentication-managed-identity> (already in source)
     — relies on APIM's system-assigned MI having Cosmos data-plane read on
     /dbs/governance/colls/mcp-canonical-map.
@@ -94,11 +94,11 @@ def build_merged_policy(server_name: str) -> str:
     # the regex can match `<outbound>` tokens that appear inside doc
     # comments and grab the wrong block.
     rewrite = _strip_comments(rewrite)
-    rewrite = rewrite.replace("<server-name>", server_name)
+    rewrite = rewrite.replace("{{server-name}}", server_name)
 
     filter_xml = _read(POL_DIR / "tools-list-filter.policy.xml")
     filter_xml = _strip_comments(filter_xml)
-    filter_xml = filter_xml.replace("<server-name>", server_name)
+    filter_xml = filter_xml.replace("{{server-name}}", server_name)
 
     inbound_body = _extract_inbound_body(rewrite)
     # Merge BOTH outbounds: the rewrite policy emits the

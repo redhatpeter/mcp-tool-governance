@@ -21,8 +21,10 @@
     <base />
 
     <!-- 1. AuthN — DISABLED for smoke. Subscription-key only.
+         When re-enabling, replace {{tenant-id}} with the Entra tenant
+         GUID (or wire as an APIM Named Value).
     <validate-jwt header-name="Authorization" require-scheme="Bearer" failed-validation-httpcode="401">
-      <openid-config url="https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration" />
+      <openid-config url="https://login.microsoftonline.com/{{tenant-id}}/v2.0/.well-known/openid-configuration" />
       <required-claims>
         <claim name="aud"><value>api://mcp-gateway</value></claim>
       </required-claims>
@@ -35,31 +37,33 @@
     -->
 
     <!-- 3. Only act on tools/call frames. preserveContent=true is critical:
-         APIM-MCP itself reads the body downstream to route the call. -->
-    <set-variable name="rpcBody" value="@(context.Request.Body.As<JObject>(preserveContent: true))" />
-    <set-variable name="rpcMethod" value="@(((JObject)context.Variables["rpcBody"])["method"]?.ToString())" />
+         APIM-MCP itself reads the body downstream to route the call.
+         `<` is escaped as &lt; inside attribute values; the C# expression
+         parser sees it un-escaped. -->
+    <set-variable name="rpcBody" value="@(context.Request.Body.As&lt;JObject&gt;(preserveContent: true))" />
+    <set-variable name='rpcMethod' value='@(((JObject)context.Variables["rpcBody"])["method"]?.ToString())' />
 
     <choose>
-      <when condition="@((string)context.Variables["rpcMethod"] == "tools/call")">
+      <when condition='@((string)context.Variables["rpcMethod"] == "tools/call")'>
 
-        <set-variable name="requestedTool"
-                      value="@(((JObject)context.Variables["rpcBody"])["params"]?["name"]?.ToString())" />
+        <set-variable name='requestedTool'
+                      value='@(((JObject)context.Variables["rpcBody"])["params"]?["name"]?.ToString())' />
 
         <!-- 3a. APIM-internal cache (60s TTL) -->
         <cache-lookup-value
-            key="@("canon:" + (string)context.Variables["requestedTool"])"
+            key='@("canon:" + (string)context.Variables["requestedTool"])'
             variable-name="canonicalTool" />
 
         <!-- 3b. On miss, call Cosmos with managed identity -->
         <choose>
-          <when condition="@(!context.Variables.ContainsKey("canonicalTool"))">
+          <when condition='@(!context.Variables.ContainsKey("canonicalTool"))'>
             <authentication-managed-identity resource="https://cosmos.azure.com"
                                              output-token-variable-name="cosmosAadToken" />
             <send-request mode="new" response-variable-name="cosmosResp" timeout="2" ignore-error="true">
               <set-url>@($"https://cosmoslab82658.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs/{(string)context.Variables["requestedTool"]}")</set-url>
               <set-method>GET</set-method>
               <set-header name="Authorization" exists-action="override">
-                <value>@("type=aad&ver=1.0&sig=" + (string)context.Variables["cosmosAadToken"])</value>
+                <value>@("type=aad&amp;ver=1.0&amp;sig=" + (string)context.Variables["cosmosAadToken"])</value>
               </set-header>
               <set-header name="x-ms-version" exists-action="override">
                 <value>2018-12-31</value>
@@ -71,32 +75,32 @@
 
             <!-- Fail open: if Cosmos errors or doc missing, keep the requested name -->
             <set-variable name="canonicalTool"
-              value="@{
+              value='@{
                 var resp = (IResponse)context.Variables.GetValueOrDefault("cosmosResp");
-                if (resp == null || resp.StatusCode >= 400) {
+                if (resp == null || resp.StatusCode &gt;= 400) {
                   return (string)context.Variables["requestedTool"];
                 }
-                var doc = resp.Body.As<JObject>();
+                var doc = resp.Body.As&lt;JObject&gt;();
                 return doc["primary"]?["name"]?.ToString() ?? (string)context.Variables["requestedTool"];
-              }" />
+              }' />
 
             <cache-store-value
-                key="@("canon:" + (string)context.Variables["requestedTool"])"
-                value="@((string)context.Variables["canonicalTool"])"
+                key='@("canon:" + (string)context.Variables["requestedTool"])'
+                value='@((string)context.Variables["canonicalTool"])'
                 duration="60" />
           </when>
         </choose>
 
         <!-- 3c. Rewrite the JSON-RPC body if alias != canonical -->
         <choose>
-          <when condition="@((string)context.Variables["canonicalTool"] != (string)context.Variables["requestedTool"])">
+          <when condition='@((string)context.Variables["canonicalTool"] != (string)context.Variables["requestedTool"])'>
             <set-body>@{
               var body = (JObject)context.Variables["rpcBody"];
               body["params"]["name"] = (string)context.Variables["canonicalTool"];
               return body.ToString();
             }</set-body>
             <set-header name="x-mcp-canonical-rewrite" exists-action="override">
-              <value>@($"{context.Variables["requestedTool"]} -> {context.Variables["canonicalTool"]}")</value>
+              <value>@($"{context.Variables["requestedTool"]} -&gt; {context.Variables["canonicalTool"]}")</value>
             </set-header>
           </when>
         </choose>
@@ -110,12 +114,12 @@
     <!-- Echo the rewrite decision (or "none") on the response so the demo
          client can see what the gateway did. -->
     <choose>
-      <when condition="@(context.Variables.ContainsKey("requestedTool") &amp;&amp; context.Variables.ContainsKey("canonicalTool"))">
+      <when condition='@(context.Variables.ContainsKey("requestedTool") &amp;&amp; context.Variables.ContainsKey("canonicalTool"))'>
         <set-header name="x-mcp-canonical-rewrite" exists-action="override">
           <value>@{
             var req = (string)context.Variables["requestedTool"];
             var canon = (string)context.Variables["canonicalTool"];
-            return req == canon ? $"none ({req})" : $"{req} -> {canon}";
+            return req == canon ? $"none ({req})" : $"{req} -&gt; {canon}";
           }</value>
         </set-header>
       </when>

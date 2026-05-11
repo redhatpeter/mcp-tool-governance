@@ -27,9 +27,11 @@
       - Cosmos doc shape includes `aliases: [<server>__<name>, ...]`
         (emitted by apps/dup-resolver/canonical_map.py since L3 step 1).
 
-  PLACEHOLDERS (replace before pasting; or wire as Named Values)
-    <tenant-id>            Entra tenant GUID (only if you also keep JWT validate here)
-    <server-name>          MCP server name as it appears in the doc_id prefix
+  PLACEHOLDERS (XML-safe Named-Value form; substituted by
+  apim/deploy/deploy_l3_policies.py before submission, or resolved
+  natively by APIM if you author the matching Named Values).
+    {{tenant-id}}          Entra tenant GUID (only if you also keep JWT validate here)
+    {{server-name}}        MCP server name as it appears in the doc_id prefix
                            (e.g. "governed-mcp" or "messy-mcp"). Used to scope
                            the canonical_map query to this server.
     cosmoslab82658         Cosmos account host. Already targeted at the PoC
@@ -49,15 +51,17 @@
   <outbound>
     <base />
 
-    <!-- 1. Only act on JSON-RPC `tools/list` responses with a 2xx body. -->
+    <!-- 1. Only act on JSON-RPC `tools/list` responses with a 2xx body.
+         `<` and `&` must be XML-escaped inside attribute values; the
+         C# expression parser sees them un-escaped. -->
     <choose>
-      <when condition="@(context.Response.StatusCode >= 200 && context.Response.StatusCode < 300)">
+      <when condition="@(context.Response.StatusCode &gt;= 200 &amp;&amp; context.Response.StatusCode &lt; 300)">
 
-        <set-variable name="rpcResp" value="@(context.Response.Body.As<JObject>(preserveContent: true))" />
-        <set-variable name="rpcResult" value="@(((JObject)context.Variables["rpcResp"])["result"]?["tools"] as JArray)" />
+        <set-variable name="rpcResp" value="@(context.Response.Body.As&lt;JObject&gt;(preserveContent: true))" />
+        <set-variable name='rpcResult' value='@(((JObject)context.Variables["rpcResp"])["result"]?["tools"] as JArray)' />
 
         <choose>
-          <when condition="@(((JArray)context.Variables.GetValueOrDefault("rpcResult")) != null)">
+          <when condition='@(((JArray)context.Variables.GetValueOrDefault("rpcResult")) != null)'>
 
             <!-- 2. APIM-internal cache (60s TTL) keyed by server name.
                  Holds a comma-separated string of fully-qualified non-canonical
@@ -65,11 +69,11 @@
                  every tools/list — busy clients can hit this dozens of times
                  per minute. -->
             <cache-lookup-value
-                key="@("aliasdrop:" + "<server-name>")"
+                key='@("aliasdrop:" + "{{server-name}}")'
                 variable-name="aliasDropCsv" />
 
             <choose>
-              <when condition="@(!context.Variables.ContainsKey("aliasDropCsv"))">
+              <when condition='@(!context.Variables.ContainsKey("aliasDropCsv"))'>
                 <authentication-managed-identity
                     resource="https://cosmos.azure.com"
                     output-token-variable-name="cosmosAadToken" />
@@ -82,7 +86,7 @@
                   <set-url>@($"https://cosmoslab82658.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs")</set-url>
                   <set-method>POST</set-method>
                   <set-header name="Authorization" exists-action="override">
-                    <value>@("type=aad&ver=1.0&sig=" + (string)context.Variables["cosmosAadToken"])</value>
+                    <value>@("type=aad&amp;ver=1.0&amp;sig=" + (string)context.Variables["cosmosAadToken"])</value>
                   </set-header>
                   <set-header name="x-ms-version" exists-action="override">
                     <value>2018-12-31</value>
@@ -101,37 +105,37 @@
                       new JProperty("query",
                         "SELECT VALUE c.aliases FROM c WHERE c.canonical_server = @s OR EXISTS(SELECT VALUE m FROM m IN c.members WHERE m.server = @s)"),
                       new JProperty("parameters", new JArray(
-                        new JObject(new JProperty("name", "@s"), new JProperty("value", "<server-name>"))
+                        new JObject(new JProperty("name", "@s"), new JProperty("value", "{{server-name}}"))
                       ))
                     );
                     return q.ToString();
                   }</set-body>
                 </send-request>
 
-                <set-variable name="aliasDropCsv" value="@{
+                <set-variable name="aliasDropCsv" value='@{
                   var resp = (IResponse)context.Variables.GetValueOrDefault("cosmosResp");
-                  if (resp == null || resp.StatusCode >= 400) { return ""; }
-                  var docs = resp.Body.As<JObject>()["Documents"] as JArray;
+                  if (resp == null || resp.StatusCode &gt;= 400) { return ""; }
+                  var docs = resp.Body.As&lt;JObject&gt;()["Documents"] as JArray;
                   if (docs == null) { return ""; }
-                  var ids = new System.Collections.Generic.List<string>();
+                  var ids = new System.Collections.Generic.List&lt;string&gt;();
                   foreach (var aliasArr in docs) {
                     if (aliasArr is JArray arr) {
                       foreach (var a in arr) { ids.Add(a.ToString()); }
                     }
                   }
                   return string.Join(",", ids);
-                }" />
+                }' />
 
                 <cache-store-value
-                    key="@("aliasdrop:" + "<server-name>")"
-                    value="@{
+                    key='@("aliasdrop:" + "{{server-name}}")'
+                    value='@{
                       // cache-store-value rejects empty strings ("The value
                       // field is required.") and would 500 on any server
                       // with no aliases. Persist a sentinel for the empty
                       // case so the 60s cache still suppresses Cosmos.
                       var v = (string)context.Variables["aliasDropCsv"];
                       return string.IsNullOrEmpty(v) ? "__none__" : v;
-                    }"
+                    }'
                     duration="60" />
               </when>
             </choose>
@@ -140,20 +144,20 @@
                  tools/list payload exposes only the `name` (wire name)
                  per tool — we synthesize the id with the server prefix
                  to match the doc_id format L2 wrote. -->
-            <set-variable name="droppedCount" value="@{
+            <set-variable name="droppedCount" value='@{
               var dropCsv = (string)context.Variables["aliasDropCsv"];
               // "__none__" is the sentinel written by cache-store-value
               // when the real value would be empty (see above).
               if (string.IsNullOrEmpty(dropCsv) || dropCsv == "__none__") { return 0; }
-              var dropSet = new System.Collections.Generic.HashSet<string>(
-                  dropCsv.Split(','), System.StringComparer.Ordinal);
+              var dropSet = new System.Collections.Generic.HashSet&lt;string&gt;(
+                  dropCsv.Split(",".ToCharArray()), System.StringComparer.Ordinal);
 
               var tools = (JArray)context.Variables["rpcResult"];
               var kept = new JArray();
               int dropped = 0;
               foreach (var t in tools) {
                 var name = t["name"]?.ToString() ?? "";
-                var fqid = "<server-name>__" + name;
+                var fqid = "{{server-name}}__" + name;
                 if (dropSet.Contains(fqid)) { dropped++; continue; }
                 kept.Add(t);
               }
@@ -161,15 +165,10 @@
               var resp = (JObject)context.Variables["rpcResp"];
               ((JObject)resp["result"])["tools"] = kept;
               return dropped;
-            }" />
+            }' />
 
             <!-- Always rewrite the body. We've already consumed the body
-                 stream via .As<JObject>(preserveContent: true); a downstream
-                 SSE/streaming pass-through can choke on the half-read buffer
-                 when no drops are made. Re-emitting the (possibly unchanged)
-                 JSON tree avoids that. -->
-            <!-- Always rewrite the body. We've already consumed the body
-                 stream via .As<JObject>(preserveContent: true); a downstream
+                 stream via .As&lt;JObject&gt;(preserveContent: true); a downstream
                  SSE/streaming pass-through can choke on the half-read buffer
                  when no drops are made. Re-emitting the (possibly unchanged)
                  JSON tree avoids that. -->
