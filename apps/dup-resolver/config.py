@@ -47,6 +47,8 @@ def search_credential():
 
 # --- APIM source of truth ---
 APIM_GATEWAY_BASE = _env("APIM_GATEWAY_BASE", "https://apimopenai99.azure-api.net")
+# Auth precedence: APIM_KEY env var > APIM_KEY_FILE path
+APIM_KEY = _env("APIM_KEY", "")
 APIM_KEY_FILE = _env("APIM_KEY_FILE", "/tmp/apim-master-key.txt")
 MCP_SERVERS = [s.strip() for s in _env("MCP_SERVERS", "governed-mcp,messy-mcp").split(",") if s.strip()]
 
@@ -90,4 +92,6 @@ def credential() -> DefaultAzureCredential:
 
 
 def apim_subscription_key() -> str:
+    if APIM_KEY:
+        return APIM_KEY
     return Path(APIM_KEY_FILE).read_text().strip()

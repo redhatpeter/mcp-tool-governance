@@ -45,6 +45,7 @@ import requests
 import streamlit as st
 import yaml
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from dotenv import load_dotenv
 from openai import AzureOpenAI
 
 # ---------------------------------------------------------------------------
@@ -53,6 +54,9 @@ from openai import AzureOpenAI
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROMPTS_PATH = REPO_ROOT / "eval" / "prompts.yaml"
+
+# Load frontend/.env (does not override pre-set env vars)
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 APIM_BASE = os.environ.get("APIM_BASE", "https://apimopenai99.azure-api.net")
 APIM_KEY_FILE = os.environ.get("APIM_KEY_FILE", "/tmp/apim-master-key.txt")
@@ -380,9 +384,14 @@ with tab_headline:
     if chosen.get("narrator_note"):
         st.info(f"💡 **Narrator:** {chosen['narrator_note']}")
 
+    # Key the textbox by the chosen prompt id so it resets to the new prompt
+    # whenever the radio changes. Without this, Streamlit's widget cache holds
+    # whatever was previously typed/selected — leading the agent to run
+    # against the wrong prompt and produce misleading verdicts.
     user_prompt = st.text_area(
         "Prompt to send (edit if you like)",
-        value=chosen["prompt"], height=70, key="prompt_text",
+        value=chosen["prompt"], height=70,
+        key=f"prompt_text__{chosen['id']}",
     )
 
     run = st.button("▶  Run on both servers in parallel", type="primary", use_container_width=True)
@@ -408,6 +417,37 @@ with tab_headline:
         expected = chosen["expected_canonical"]
         acceptable = chosen.get("acceptable_messy") or []
 
+        # Update the running tally so the scoreboard at the top refreshes.
+        for cfg in CONFIGS:
+            picked = results[cfg]["picked"]
+            if cfg == "governed":
+                correct = expected in picked
+            else:
+                correct = any(p in acceptable for p in picked)
+            st.session_state.tally[cfg].append(correct)
+
+        # Persist this run's result so it survives the rerun below
+        # (st.rerun() refreshes the top scoreboard but otherwise wipes the
+        # `if run:` block — render the per-server panel from session_state
+        # OUTSIDE this block so it stays visible).
+        st.session_state.last_run = {
+            "results": results,
+            "expected": expected,
+            "acceptable": acceptable,
+            "catalog_sizes": {k: len(v) for k, v in catalogs.items()},
+            "prompt_id": chosen["id"],
+            "prompt_text": user_prompt,
+        }
+        st.rerun()  # refresh top scoreboard
+
+    # Render the most recent run's per-server panel (persists across reruns).
+    last = st.session_state.get("last_run")
+    if last:
+        expected = last["expected"]
+        acceptable = last["acceptable"]
+        results = last["results"]
+        catalog_sizes = last["catalog_sizes"]
+        st.markdown(f"##### Last run: `{last['prompt_id']}` — _{last['prompt_text']}_")
         col_m, col_g = st.columns(2, gap="medium")
         for col, cfg, header in [(col_m, "messy", "Messy MCP"), (col_g, "governed", "Governed MCP")]:
             with col:
@@ -418,7 +458,6 @@ with tab_headline:
                     correct = expected in picked
                 else:
                     correct = any(p in acceptable for p in picked)
-                st.session_state.tally[cfg].append(correct)
                 badge = "✅ Correct" if correct else ("❌ Wrong tool" if picked else "⚠️ Declined")
                 st.markdown(f"**Verdict:** {badge}")
                 if picked:
@@ -430,11 +469,10 @@ with tab_headline:
                             st.write(r["final_text"])
                 st.metric("Latency", f"{r['latency_s']*1000:.0f} ms")
                 st.caption(
-                    f"Catalog size: **{len(catalogs[cfg])}** tools · "
+                    f"Catalog size: **{catalog_sizes[cfg]}** tools · "
                     f"Expected (governed scoring): `{expected}` · "
                     f"Acceptable on messy: {', '.join(f'`{a}`' for a in acceptable) or '_none_'}"
                 )
-        st.rerun()  # refresh top scoreboard
 
 # ---------------------------------------------------------------------------
 # TAB 2 — Tool catalog side-by-side
