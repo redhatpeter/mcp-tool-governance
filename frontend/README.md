@@ -8,9 +8,9 @@ in under a minute.
 | Tab | What it shows |
 |-----|---------------|
 | 🎯 **Headline** | Pick a sample prompt → both servers run an agent in parallel → see which tool got picked, latency, ✅/❌ verdict, and a session-wide scoreboard. |
-| 📋 **Catalog** | Live `tools/list` from each gateway. Counts collisions and missing descriptions; surfaces the `x-mcp-tools-filtered` header from L1's `tools-list-filter` policy. |
+| 📋 **Catalog** | Live `tools/list` from each gateway. Counts collisions and missing descriptions; surfaces the `x-mcp-tools-filtered` header from L3's `tools-list-filter` policy. |
 | 🔁 **L3 rewrite** | Three preset alias names → `tools/call` → see the `x-mcp-canonical-rewrite` header light up. |
-| 🧠 **L2 sim** | Paste a tool description (as if from an incoming PR) → POSTs to the local dup-resolver `/similarity` → DUPLICATE / WARN / REVIEW / OK with the nearest match. |
+| 🧠 **L2 sim** | Paste a tool description (as if from an incoming PR) → POSTs to the local dup-resolver `/similarity` → DUPLICATE / WARN / OK with the nearest match. |
 
 ## Run
 

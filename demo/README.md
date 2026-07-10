@@ -18,7 +18,7 @@ Override the gateway if demoing against a different APIM:
 GATEWAY_URL=https://my-apim.azure-api.net/governed-mcp/mcp ./demo/run-demo.sh
 ```
 
-Act 4 (L2 semantic dedup) needs the dup-resolver running. Optional — Act 4 falls back to captured `docs/samples/*.json` if the resolver isn't reachable:
+Act 4 (L2 semantic dedup) needs the dup-resolver running. Optional — Act 4 falls back to captured local sample JSON if the resolver isn't reachable:
 ```bash
 cd apps/dup-resolver && source .venv/bin/activate \
   && uvicorn main:app --host 127.0.0.1 --port 8089 &
@@ -35,7 +35,7 @@ cd apps/dup-resolver && source .venv/bin/activate \
 | `/tmp/apim-master-key.txt` | local file | APIM master subscription key (raw, no whitespace). Get from Portal → APIM → Subscriptions → built-in all-access |
 | Gateway reachable | network | `https://apimopenai99.azure-api.net/governed-mcp/mcp` by default |
 | ngrok backend | optional | only needed if you want Act 3 to actually return a 200 body. Headers (which is what we read) come back regardless |
-| dup-resolver running | optional | Act 4 needs `http://127.0.0.1:8089` reachable. If it isn't, Act 4 falls back to captured samples in `docs/samples/`. |
+| dup-resolver running | optional | Act 4 needs `http://127.0.0.1:8089` reachable. If it isn't, Act 4 falls back to captured local samples. |
 
 ---
 
@@ -118,7 +118,7 @@ cd apps/dup-resolver && source .venv/bin/activate \
 | Act 3 returns `404 Resource Not Found` for the alias | The alias isn't in Cosmos. Re-seed: `python3 tools-cli/seed_canonical_map.py` |
 | Act 4 says "resolver not running" | Either start it (`cd apps/dup-resolver && uvicorn main:app --port 8089`) or accept the captured-sample fallback — the demo continues either way. |
 | Lint says "no OpenAPI specs found" | You're not in the repo root. `cd` to repo root first. |
-| Pre-recorded fallback | If Azure is unreachable entirely, walk through [`docs/samples/demo-transcript.md`](../docs/samples/demo-transcript.md) screen-share. Same script, captured output. |
+| Pre-recorded fallback | If Azure is unreachable entirely, walk through the pre-captured local demo transcript as a screen-share. Same script, captured output. |
 
 ---
 
@@ -126,10 +126,7 @@ cd apps/dup-resolver && source .venv/bin/activate \
 
 - [`run-demo.sh`](run-demo.sh) — the script
 - [`README.md`](README.md) — this file (narrator notes)
-- [`../docs/samples/demo-transcript.md`](../docs/samples/demo-transcript.md) — pre-captured clean run, screen-share fallback
-- [`../docs/samples/governed-mcp.tools-list.json`](../docs/samples/governed-mcp.tools-list.json) — current tool catalog snapshot
 - [`../eval/results/summary.md`](../eval/results/summary.md) — eval numbers (the "so what" slide)
-- [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) — full PoC plan, for follow-up questions
 
 ## Time budget
 

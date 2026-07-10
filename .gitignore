@@ -22,3 +22,6 @@ __pycache__/
 .env
 .env.local
 frontend/.venv/
+.ngrok-url
+docs/
+article/

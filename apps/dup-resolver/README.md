@@ -2,7 +2,7 @@
 
 The **brain** of MCP Tool Governance: ingests tool descriptors from APIM-MCP servers, embeds them, clusters near-duplicates, deterministically elects a canonical, and writes the canonical_map that L3 reads at runtime.
 
-> **Scope:** PoC implementation. See [docs/ARCHITECTURE.md §14](../../docs/ARCHITECTURE.md#14-layer-2--api-center--dup-resolver-service) for the full design.
+> **Scope:** PoC implementation.
 
 ---
 
@@ -115,7 +115,7 @@ Auth uses `DefaultAzureCredential` for both AOAI and AI Search — `az login` is
 The cosine-similarity score above which two tools are considered **duplicates** rather than merely related. Affects:
 - the L2 CI gate (`similarity-check.yml`) — `>= threshold` fails the PR
 - the WARN band (`threshold − 0.05 ≤ score < threshold`) — flagged for reviewer
-- the **REVIEW** band (`REVIEW_THRESHOLD ≤ score < threshold − 0.05`) — surfaced in the PR comment but does not fail the check (added 2026-05-10 from the precision/recall study at `docs/eval/precision-recall.md`; catches real-world cross-vendor semantic duplicates such as `github.create_issue` vs `linear.createIssue` at 0.651)
+- the **REVIEW** band (`REVIEW_THRESHOLD ≤ score < threshold − 0.05`) — surfaced in the PR comment but does not fail the check (added 2026-05-10 from the precision/recall study; catches real-world cross-vendor semantic duplicates such as `github.create_issue` vs `linear.createIssue` at 0.651)
 - single-linkage clustering inside `cluster.py` — uses `CLUSTER_THRESHOLD` only
 
 | Value | Behavior | When to use |
@@ -278,7 +278,7 @@ F1 for the **duplicate** class:
 ```bash
 cd apps/dup-resolver && source .venv/bin/activate
 python3 eval_threshold.py                                            # console
-python3 eval_threshold.py --markdown ../../docs/eval/precision-recall.md
+python3 eval_threshold.py --markdown precision-recall.md
 python3 eval_threshold.py --thresholds 0.85,0.88,0.90,0.92,0.95
 python3 eval_threshold.py --compare                                  # A/B all variants
 python3 eval_threshold.py --variant synonyms                         # single non-default
@@ -293,9 +293,8 @@ aws-s3, gcs, kubernetes, helm, docker, sentry, rollbar, stripe, square,
 playwright, puppeteer, fetch, brave-search, memory, github, gitlab).
 Intentionally **stress-loaded** with hard cases: syntactic/semantic/
 cross-server/cross-vendor duplicates plus hard negatives like "same
-domain different entity" and "same entity different action". Read
-[`docs/eval/precision-recall.md`](../../docs/eval/precision-recall.md)
-for the latest numbers. **Headline:** precision **1.000** at the production
+domain different entity" and "same entity different action".
+**Headline:** precision **1.000** at the production
 threshold 0.92 (0 false positives over 43 novels) — the hard block is
 robust. Recall at 0.92 is 0.091; the REVIEW band at 0.65 (shipped 2026-
 05-10) recovers ~64 % of duplicates as soft "reviewer should look" PR
@@ -325,8 +324,7 @@ from 26 → 76 pairs and added vendor diversity (linear/jira/notion/etc.):
 because same-domain prose lifts novel scores faster than true-duplicate
 scores. **Production fingerprint stays at `baseline`.** The two-tier
 verdict (DUPLICATE ≥ 0.92 hard block, REVIEW ≥ 0.65 soft surface) is the
-architectural fix for the embedding ceiling — see
-[`docs/eval/precision-recall.md`](../../docs/eval/precision-recall.md).
+architectural fix for the embedding ceiling.
 Grow further only if a customer-specific corpus changes the picture.
 
 ## Canonical map — L2 → L3 handoff

@@ -1,7 +1,6 @@
 # APIM Policies
 
-Versioned APIM policy artifacts. The source of truth for the design behind each
-policy is [docs/ARCHITECTURE.md §15](../../docs/ARCHITECTURE.md). This directory
+Versioned APIM policy artifacts. This directory
 holds the deployable form so it can be diffed, reviewed, and (eventually)
 deployed via APIM Policy Fragments + Terraform.
 
@@ -69,7 +68,8 @@ az cosmosdb sql role assignment create \
   --role-definition-id 00000000-0000-0000-0000-000000000001
 ```
 
-No keys, no Key Vault entries. See [ADR 0001](../../docs/adr/0001-apim-mcp-native.md).
+No keys, no Key Vault entries. The APIM managed identity is granted access
+directly (APIM-MCP native pattern).
 
 ### 3. Placeholders in the policy XML
 
@@ -173,9 +173,7 @@ four real-world cross-vendor REVIEW examples.
 `governed-mcp` and `messy-mcp` on `apimopenai99`. Live captures:
 `messy-mcp/tools/list` → `x-mcp-tools-filtered: 3`;
 `messy-mcp/tools/call createCustomer` → `x-mcp-canonical-rewrite:
-createCustomer -> customerCreate`. See
-[`docs/samples/demo-transcript.md`](../../docs/samples/demo-transcript.md)
-addendum section A for the full curl evidence.
+createCustomer -> customerCreate`.
 
 **Manual smoke tests** (for re-deploy in a new environment):
 
@@ -212,3 +210,277 @@ addendum section A for the full curl evidence.
 A scripted version of these lives in
 [`apps/dup-resolver/tests/validate_policies.py`](../../apps/dup-resolver/tests/validate_policies.py)
 and runs in CI on every change to the policies or the writer.
+
+---
+
+## How the two policies are deployed (merged, not separate)
+
+In the Portal you will see **one policy document per MCP server**, not two.
+[`apim/deploy/deploy_l3_policies.py`](../deploy/deploy_l3_policies.py) reads
+both source files, strips comments, extracts each one's `<inbound>` and
+`<outbound>` bodies, concatenates the two `<outbound>` blocks, substitutes
+`{{server-name}}`, and PUTs the result. The merged artifacts live under
+[`apim/deploy/_built/`](../deploy/_built/) — diff those against the Portal
+to confirm what's deployed.
+
+Why merge? APIM allows only one policy per scope. The two source files are
+kept separate in this repo because they solve independent problems
+(inbound rewrite vs outbound filter) and are unit-tested independently;
+the merge is a packaging step.
+
+---
+
+## End-to-end walkthrough with live data
+
+Worked example using the actual rows in `cosmoslab82658 / governance /
+mcp-canonical-map` and the actual operations in
+[`apim/openapi/finance-messy.json`](../openapi/finance-messy.json) as of
+2026-06-11. Every query in this section is copy-pasteable into the Cosmos
+Data Explorer.
+
+### The cluster we'll demo against
+
+```sql
+-- Find every cluster with a non-empty aliases[] (the only ones policies do work for)
+SELECT c.id, c.aliases, c.canonical_server
+FROM c
+WHERE ARRAY_LENGTH(c.aliases) > 0
+```
+
+Returns two rows on the live PoC instance:
+
+| `id` (canonical) | `aliases[]` | `canonical_server` |
+|---|---|---|
+| `messy-mcp__customerCreate` | `["messy-mcp__createCustomer"]` | `messy-mcp` |
+| `messy-mcp__invoiceCreateV1` | `["messy-mcp__invoiceCreateV2"]` | `messy-mcp` |
+
+The full doc for the customer cluster (abbreviated):
+
+```jsonc
+{
+  "id": "messy-mcp__customerCreate",
+  "canonical_id": "messy-mcp__customerCreate",
+  "canonical_server": "messy-mcp",
+  "canonical_name": "customerCreate",
+  "primary":  { "id": "messy-mcp__customerCreate", "server": "messy-mcp", "name": "customerCreate" },
+  "aliases":  [ "messy-mcp__createCustomer" ],
+  "members":  [
+    { "id": "messy-mcp__createCustomer", "server": "messy-mcp", "name": "createCustomer", "is_canonical": false },
+    { "id": "messy-mcp__customerCreate", "server": "messy-mcp", "name": "customerCreate", "is_canonical": true }
+  ],
+  "score": 0.5,
+  "score_breakdown": { "governed": 0, "name": 0.1, "domain": 0.15, "verb": 0.1, "desc": 0.15, "guidance": 0 }
+}
+```
+
+Every other doc in the container is a singleton (`aliases: []`). The
+policies run against those too, but they no-op — there is nothing to drop
+and nothing to rewrite.
+
+### The 13 → 12 → 10 funnel on `messy-mcp`
+
+| Stage | Count | Reason |
+|---|---|---|
+| OpenAPI ops declared | **13** | from `apim/openapi/finance-messy.json` |
+| Wire tools surfaced by `tools/list` | **12** | APIM-MCP normalizes `summary` → wire name; `createCustomer` and `Create_Customer` both normalize to `createCustomer` and APIM keeps only the **first declared** (gateway naming-drift failure mode) |
+| After L3 outbound filter | **10** | Two aliases dropped: `createCustomer` (alias of `customerCreate`) and `invoiceCreateV2` (alias of `invoiceCreateV1`). Response carries `x-mcp-tools-filtered: 2` |
+
+Governed-mcp has 8 ops → 8 wire tools → 8 after filter (no aliases targeting
+governed-mcp in the current data). Each `tools/list` call is per-server; the
+agent never sees an aggregate count.
+
+### Flow A — `tools/list` on `messy-mcp` (the filter path)
+
+#### 1. Wire request
+
+```http
+POST https://apimopenai99.azure-api.net/messy-mcp/mcp HTTP/1.1
+Ocp-Apim-Subscription-Key: <key>
+Content-Type: application/json
+
+{ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }
+```
+
+#### 2. APIM `<inbound>`
+
+`rpcMethod == "tools/list"` → the rewrite branch's `<when>` is **false**, so
+the inbound block is a no-op. Request flows to backend untouched.
+
+#### 3. Backend response (12 wire tools)
+
+```json
+{ "jsonrpc":"2.0","id":1,"result":{"tools":[
+  {"name":"createCustomer"},      {"name":"customerCreate"},
+  {"name":"customerAPIFinalV3"},  {"name":"customerFind"},
+  {"name":"customerSearch"},      {"name":"customerLookup"},
+  {"name":"invoiceCreateV1"},     {"name":"invoiceCreateV2"},
+  {"name":"invoiceCreateLegacy"}, {"name":"lookup"},
+  {"name":"create"},              {"name":"list"}
+]}}
+```
+
+#### 4. APIM `<outbound>` — alias filter
+
+a. `cache-lookup-value key="aliasdrop:messy-mcp"` → cold cache, **miss**.
+b. Mint AAD token via `<authentication-managed-identity>`. POST to Cosmos:
+
+```sql
+SELECT VALUE c.aliases
+FROM c
+WHERE c.canonical_server = "messy-mcp"
+   OR EXISTS(SELECT VALUE m FROM m IN c.members WHERE m.server = "messy-mcp")
+```
+
+c. Cosmos returns:
+
+```json
+{ "Documents": [
+    [ "messy-mcp__createCustomer" ],
+    [ "messy-mcp__invoiceCreateV2" ]
+] }
+```
+
+d. Flatten + join → `aliasDropCsv = "messy-mcp__createCustomer,messy-mcp__invoiceCreateV2"`.
+   Cache for 60s under `aliasdrop:messy-mcp`.
+
+e. For each tool build `fqid = "messy-mcp__" + name`; drop if in the set:
+
+| Tool | fqid | Drop? |
+|---|---|---|
+| createCustomer | messy-mcp__createCustomer | **yes** |
+| customerCreate | messy-mcp__customerCreate | no |
+| customerAPIFinalV3 | messy-mcp__customerAPIFinalV3 | no |
+| customerFind | messy-mcp__customerFind | no |
+| customerSearch | messy-mcp__customerSearch | no |
+| customerLookup | messy-mcp__customerLookup | no |
+| invoiceCreateV1 | messy-mcp__invoiceCreateV1 | no |
+| invoiceCreateV2 | messy-mcp__invoiceCreateV2 | **yes** |
+| invoiceCreateLegacy | messy-mcp__invoiceCreateLegacy | no |
+| lookup | messy-mcp__lookup | no |
+| create | messy-mcp__create | no |
+| list | messy-mcp__list | no |
+
+f. Rewrite body with the 10-tool array, stamp `x-mcp-tools-filtered: 2`.
+
+#### 5. Wire response (what the LLM actually sees)
+
+```http
+HTTP/1.1 200 OK
+x-mcp-tools-filtered: 2
+
+{ "jsonrpc":"2.0","id":1,"result":{"tools":[ ...10 tools, no createCustomer, no invoiceCreateV2... ] } }
+```
+
+### Flow B — `tools/call` for an alias (the rewrite path)
+
+A stale agent that cached `tools/list` from before the filter was deployed
+still has `createCustomer` in its function-calling schema and the LLM picks
+it. The rewrite layer rescues it.
+
+#### 1. Wire request
+
+```http
+POST https://apimopenai99.azure-api.net/messy-mcp/mcp HTTP/1.1
+
+{ "jsonrpc":"2.0","id":2,"method":"tools/call",
+  "params": { "name":"createCustomer",
+              "arguments": {"first":"Ada","last":"Lovelace","email":"ada@example.com"} } }
+```
+
+#### 2. APIM `<inbound>` — canonical rewrite
+
+a. `requestedTool = "createCustomer"`, `requestedFqid = "messy-mcp__createCustomer"`.
+b. `cache-lookup-value key="canon:messy-mcp__createCustomer"` → miss.
+c. Cosmos query:
+
+```sql
+SELECT VALUE c.primary.name
+FROM c
+WHERE c.id = "messy-mcp__createCustomer"
+   OR ARRAY_CONTAINS(c.aliases, "messy-mcp__createCustomer")
+```
+
+d. Cosmos returns: `{ "Documents": ["customerCreate"] }`.
+   The match is on `ARRAY_CONTAINS(c.aliases, ...)` for the `messy-mcp__customerCreate` doc.
+
+e. `canonicalTool = "customerCreate"`. Cache for 60s.
+f. Body rewrite:
+
+```json
+{ "jsonrpc":"2.0","id":2,"method":"tools/call",
+  "params":{ "name":"customerCreate",
+             "arguments":{"first":"Ada","last":"Lovelace","email":"ada@example.com"} } }
+```
+
+#### 3. Backend executes the canonical, returns success.
+
+#### 4. APIM `<outbound>`
+
+- Stamps `x-mcp-canonical-rewrite: createCustomer -> customerCreate`.
+- The filter block also runs but `result.tools` is null on a `tools/call`
+  response → no-op.
+
+#### 5. Wire response
+
+```http
+HTTP/1.1 200 OK
+x-mcp-canonical-rewrite: createCustomer -> customerCreate
+```
+
+### Why `customerCreate` was elected canonical (not `createCustomer`)
+
+The election runs in [`apps/dup-resolver/elect.py`](../../apps/dup-resolver/elect.py)
+with a deterministic weighted score. Applied to this cluster's two
+surviving members (both from `messy-mcp` — `Create_Customer` was already
+gone after the wire-name collision):
+
+| Signal | Weight | `createCustomer` | `customerCreate` |
+|---|---|---|---|
+| `governed` (server = `governed-mcp`) | 0.30 | 0 | 0 |
+| `name` regex | 0.10 | **0.10** ✓ | **0.10** ✓ |
+| `domain` prefix (`finance` / `customer` / …) | 0.15 | 0 — starts with `create` | **0.15** ✓ — starts with `customer` |
+| `verb` (last camel-split token in approved set) | 0.10 | 0 — last token = `Customer` | **0.10** ✓ — last token = `create` |
+| `desc` ≥ 80 chars | 0.15 | **0.15** | **0.15** |
+| `guidance` words ("USE WHEN" / "DO NOT USE") | 0.20 | 0 | 0 |
+| **Total** | **1.00** | **0.35** | **0.50** ◀ winner |
+
+The score breakdown stored on the Cosmos doc (`score: 0.5`,
+`score_breakdown: {governed:0, name:0.1, domain:0.15, verb:0.1, desc:0.15, guidance:0}`)
+is the receipt of this exact calculation.
+
+If a `governed-mcp` member ever joins this cluster (e.g. someone authors
+`customer_create` on the governed side), it would score
+`0.30 + 0.10 + 0.15 + 0.10 + 0.15 = 0.80` and automatically take over as
+canonical on the next ingest run — no manual override needed.
+
+### Verification queries you can run right now
+
+```sql
+-- The exact rewrite query the policy issues for the alias
+SELECT VALUE c.primary.name
+FROM c
+WHERE c.id = "messy-mcp__createCustomer"
+   OR ARRAY_CONTAINS(c.aliases, "messy-mcp__createCustomer")
+-- → ["customerCreate"]
+
+-- The exact filter query the policy issues for messy-mcp
+SELECT VALUE c.aliases
+FROM c
+WHERE c.canonical_server = "messy-mcp"
+   OR EXISTS(SELECT VALUE m FROM m IN c.members WHERE m.server = "messy-mcp")
+-- → [ ["messy-mcp__createCustomer"], ["messy-mcp__invoiceCreateV2"] ]
+
+-- Same filter query for governed-mcp — no aliases targeting it yet
+SELECT VALUE c.aliases
+FROM c
+WHERE c.canonical_server = "governed-mcp"
+   OR EXISTS(SELECT VALUE m FROM m IN c.members WHERE m.server = "governed-mcp")
+-- → all empty arrays → x-mcp-tools-filtered: 0 on governed-mcp/tools/list
+
+-- Querying for a tool name that doesn't exist (the fail-open path)
+SELECT VALUE c.primary.name
+FROM c
+WHERE c.id = "governed-mcp__createCustomer"
+   OR ARRAY_CONTAINS(c.aliases, "governed-mcp__createCustomer")
+-- → []  → policy returns requestedTool unchanged → request passes through
+```

@@ -1,9 +1,45 @@
 # MCP Tool Governance
 
-Governance plane for MCP (Model Context Protocol) tools published through
-Azure API Management. Enforces canonical naming, alias rewriting, JWT
-validation, and rate limiting at the APIM edge — no custom MCP server
+Reference implementation for governing MCP (Model Context Protocol) tools
+published through Azure API Management. When every REST API becomes an agent
+tool, agents choose tools from machine-readable catalogs — not from human
+judgment. This repo enforces canonical naming, alias rewriting, JWT
+validation, and rate limiting at the APIM edge, with no custom MCP server
 containers required.
+
+> Companion article: *"When Every API Becomes an Agent Tool: Why MCP
+> Governance Matters."* This repo is the hands-on reference for the
+> L1/L2/L3 workflow, the governed-vs-messy MCP surfaces, and the runtime
+> rewrite/filter pattern described there.
+
+## Why this exists
+
+An MCP catalog is interpreted first by a model, not a human. As more APIs are
+surfaced as tools, agents face a larger and noisier decision surface, and tool
+quality directly affects selection accuracy, wrong-action risk, token cost, and
+auditability. Five failure patterns show up as catalogs grow:
+
+1. **Name collisions** — `createCustomer`, `CreateCustomer`, `customer_create`
+   all look like valid options to an agent; the wrong one still executes.
+2. **Semantic duplicates** — `customer.find` / `customer.search` /
+   `customer.lookup` overlap in behavior with no clear distinction in metadata.
+3. **Tool overloading & schema drift** — `invoiceCreate` /
+   `invoiceCreateV1` / `invoiceCreateLegacy` sound related but their schemas
+   diverged, so the agent can send the wrong payload to the wrong version.
+4. **Ungrouped / flat namespaces** — `create`, `lookup`, `list`, `update`
+   carry no domain signal; `finance_invoice_create` does.
+5. **Gateway naming drift** — an operation authored as `finance_quote_get`
+   can appear to the agent as `financeQuoteGet` after APIM normalization, so
+   policies keyed only on the authored name miss the runtime call.
+
+## Two connected planes
+
+- **Governance plane** — validates, deduplicates, classifies, and
+  canonicalizes tools *before* publication (L1 + L2 below).
+- **Runtime plane** — decides what the agent actually sees and how
+  invocations are normalized, filtered, secured, and observed *at runtime*
+  (L3 below), with APIM as the single control point: **govern once at the
+  gateway** instead of fixing every MCP server independently.
 
 ## Status
 
@@ -13,40 +49,52 @@ PoC complete. **All three layers shipped and live** against the
 Snapshot of what's running:
 
 | Layer | Where | What |
-|---|---|---|
+| --- | --- | --- |
 | L1 | [`.github/workflows/validate-mcp-tools.yml`](.github/workflows/validate-mcp-tools.yml) | `tools-cli/lint.py` blocks bad operations at PR time. |
 | L2 | [`.github/workflows/similarity-check.yml`](.github/workflows/similarity-check.yml) | `apps/dup-resolver/check_pr.py` embeds new ops, queries `mcp-tool-fingerprints`, posts a 5-tier verdict (DUPLICATE / WARN / REVIEW / OK / INFO) on the PR. Thresholds = repo variables `CLUSTER_THRESHOLD` (`0.92`) + `REVIEW_THRESHOLD` (`0.65`). |
 | L2 | [`.github/workflows/ingest-on-merge.yml`](.github/workflows/ingest-on-merge.yml) + [`daily-ingest.yml`](.github/workflows/daily-ingest.yml) | Re-ingest `apim/openapi/*.json` on every push to `main` and nightly; reconciles AI Search + Cosmos `mcp-canonical-map` (deletes stale docs). |
 | L3 | [`apim/policies/canonical-rewrite.policy.xml`](apim/policies/canonical-rewrite.policy.xml) + [`tools-list-filter.policy.xml`](apim/policies/tools-list-filter.policy.xml) | Both deployed on `governed-mcp` and `messy-mcp`. Live evidence: `x-mcp-tools-filtered: 3` on `messy-mcp/tools/list`; `x-mcp-canonical-rewrite: createCustomer -> customerCreate` on `tools/call`. |
 | CI gate | [`.github/workflows/policy-tests.yml`](.github/workflows/policy-tests.yml) | 6 unit tests (wirename + verdict-tier) + 8 Cosmos contract replays. Latest green: [run 25637828620](https://github.com/redhatpeter/mcp-tool-governance/actions/runs/25637828620). |
-| Demo | [`demo/run-demo.sh`](demo/run-demo.sh) | 5-minute push-button walkthrough. Pre-captured fallback at [`docs/samples/demo-transcript.md`](docs/samples/demo-transcript.md) with a 2026-05-10 addendum covering L3 deploy + REVIEW tier + CI + the APIM-MCP body-forwarding caveat. |
+| Demo | [`demo/run-demo.sh`](demo/run-demo.sh) | 5-minute push-button walkthrough of the governed-vs-messy surfaces. |
 
 **Known external blocker (not our bug):** APIM-MCP currently forwards only
 the last property of `params.arguments` as a raw scalar to the backend
 (regression of `release-service-2026-03`). Tracked at
-[Azure-Samples/AI-Gateway#315](https://github.com/Azure-Samples/AI-Gateway/issues/315);
-drafts ready under [`docs/external/`](docs/external/). Reproduces with all
-custom policies stripped — governance layer is innocent.
+[Azure-Samples/AI-Gateway#315](https://github.com/Azure-Samples/AI-Gateway/issues/315).
+Reproduces with all custom policies stripped — the governance layer is innocent.
 
-Open work tracked in [`docs/todo.md`](docs/todo.md). Post-implementation
-reflections + investments needed before pilot in
-[ARCHITECTURE.md §24.A](docs/ARCHITECTURE.md#24a-appendix--post-implementation-reflections-2026-05-10).
+## How it works (L1 / L2 / L3)
 
-## Documentation
+- **L1 — Schema & naming lint** ([`tools-cli/lint.py`](tools-cli/lint.py),
+  run in [`validate-mcp-tools.yml`](.github/workflows/validate-mcp-tools.yml)).
+  The first gate in CI. Checks naming rules, collisions, banned version
+  markers, and missing disambiguation guidance so bad tools never enter the
+  catalog.
+- **L2 — Duplicate resolution** ([`apps/dup-resolver/`](apps/dup-resolver/)).
+  Pulls descriptors, embeds and compares tools with Azure OpenAI + Azure AI
+  Search, elects a canonical identity, and writes a `canonical_map` into
+  Cosmos DB. The PR check posts a 5-tier verdict; ingest reconciles the map
+  on merge and nightly.
+- **L3 — Runtime enforcement** ([`apim/policies/`](apim/policies/)).
+  At runtime APIM reads the canonical map, filters duplicates out of
+  `tools/list`, normalizes tool identity for matching, and rewrites aliases
+  during `tools/call` — turning governance into an active runtime control
+  instead of passive documentation.
 
-| Document | Purpose |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Source of truth — design + 3-week PoC plan (26 sections). |
-| [docs/ARCHITECTURE-diagrams.md](docs/ARCHITECTURE-diagrams.md) | Mermaid + draw.io diagrams. |
-| [docs/adr/0001-apim-mcp-native.md](docs/adr/0001-apim-mcp-native.md) | Why we use APIM-MCP instead of custom MCP servers. |
-| [docs/adr/0002-repo-split.md](docs/adr/0002-repo-split.md) | Why this repo exists separately from `agent-framework`. |
-| [docs/adr/0003-topology-upgrade-path.md](docs/adr/0003-topology-upgrade-path.md) | Staged path: B (PoC) → D (pilot) → E (Year 1) → G (only if forced). |
-| [docs/eval/precision-recall.md](docs/eval/precision-recall.md) | Threshold sweep over the 76-pair labeled set; defends the 0.92 / 0.65 ladder. |
-| [docs/handoffs/](docs/handoffs/) | Per-session handoff notes (one file per session, dated). Latest: [2026-05-10](docs/handoffs/2026-05-10.md). |
+In plain English: **L1 prevents bad tools from entering the catalog, L2
+decides which tools are really the same capability, and L3 makes the runtime
+experience safer for the agent.**
+
+## Rollout path
+
+1. Start with **L1 in CI** so the catalog stops getting worse.
+2. Add **L2 in observe-only** mode so duplicate patterns become visible.
+3. Enable **L3 gradually by domain** so `tools/list` filtering and alias
+   rewrite can be measured safely in production-like conditions.
 
 ## Repository layout (actual)
 
-```
+```text
 .
 ├── apim/
 │   ├── deploy/            # Python deploy script for L3 policies (idempotent)
@@ -55,23 +103,29 @@ reflections + investments needed before pilot in
 ├── apps/
 │   └── dup-resolver/      # L2 — embed, cluster, elect, write canonical_map (+ FastAPI for demo)
 ├── demo/                  # 5-minute push-button walkthrough script
-├── docs/                  # ARCHITECTURE.md, ADRs, handoffs, eval reports, lessons, external drafts
 ├── eval/                  # before/after harness (governed vs messy, +30pp lift on pre-L3 data)
+├── frontend/              # chat UI for the governed-vs-messy comparison
 ├── tools-cli/             # L1 lint (tools-cli/lint.py)
 └── .github/workflows/     # validate-mcp-tools, similarity-check, ingest-on-merge,
                            # daily-ingest, policy-tests
 ```
 
 > Not present (and not needed for the PoC): `infra/terraform/`,
-> `registry/`, `profiles/`, `apps/frontend/`. These are listed as Year-1
-> investments in [ARCHITECTURE.md §24](docs/ARCHITECTURE.md) (and §24.A
-> for post-implementation reflections).
+> `registry/`, `profiles/`. These are Year-1 investments.
 
 ## Key conventions
 
 - **Naming standard:** `domain.entity.action` for canonical IDs,
-  `domain_entity_action` for runtime tool names. Regex
+  `domain_entity_action` for authored operation IDs. Regex
   `^[a-z][a-z0-9_]{2,63}$`.
+- **Gateway naming drift:** APIM-MCP normalizes an authored operation ID
+  (e.g. `finance_quote_get`) into a camelCase *wire name*
+  (`financeQuoteGet`) at runtime. L2 resolves the actual wire name from APIM
+  (`apps/dup-resolver/apim_wirenames.py`) so the canonical map is keyed on
+  what the agent really calls.
+- **Canonical identity:** canonical-map documents are keyed as
+  `<server>__<wireName>` (e.g. `governed-mcp__financeQuoteGet`), reconciling
+  authored, runtime, and governance identities.
 - **Canonical map fields:** `primary` (singular) and `aliases` (plural). Do not
   rename.
 - **Runtime governance signal:** the `x-mcp-canonical-rewrite` response header
@@ -82,5 +136,3 @@ reflections + investments needed before pilot in
 - APIM: `<apim-instance>` (gateway: `https://<apim-gateway-host>`)
 - Reused: AI Search `ai102srch193837986`, Cosmos `cosmos-ws`, existing Azure OpenAI
 - New RG for PoC: `MCP-tool-governance`
-
-See ARCHITECTURE.md §17 for the three-week PoC plan.
