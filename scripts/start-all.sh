@@ -10,8 +10,9 @@
 # before relaunching. Logs go to /tmp/<component>.log.
 #
 # Usage:
-#   ./scripts/start-all.sh           # bring everything up
-#   ./scripts/start-all.sh --no-apim # skip the APIM update (faster if URL unchanged)
+#   ./scripts/start-all.sh             # bring everything up
+#   ./scripts/start-all.sh --no-apim   # skip the APIM service-url update
+#   ./scripts/start-all.sh --no-cosmos # skip the Cosmos firewall+seed step
 #
 set -euo pipefail
 
@@ -32,7 +33,14 @@ APIM_RG="Default-ActivityLogAlerts"
 APIM_APIS=(finance-api-governed finance-api-messy-anti-pattern-reference)
 
 SKIP_APIM=0
-[[ "${1:-}" == "--no-apim" ]] && SKIP_APIM=1
+SKIP_COSMOS=0
+for arg in "$@"; do
+  case "$arg" in
+    --no-apim)   SKIP_APIM=1 ;;
+    --no-cosmos) SKIP_COSMOS=1 ;;
+    *) ;;
+  esac
+done
 
 log() { printf "\033[1;36m[start-all]\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m[start-all]\033[0m %s\n" "$*" >&2; }
@@ -58,6 +66,37 @@ rm -rf /tmp/.az-token-cache.d 2>/dev/null  || true
 # These are only used as a fallback — the .env files now hold inline keys.
 if [[ -x "$REPO/scripts/load-keys.sh" ]]; then
   "$REPO/scripts/load-keys.sh" >/dev/null 2>&1 || true
+fi
+
+# ---------------------------------------------------------------------------
+# 0b. Azure auth preflight.
+# The dup-resolver, the Streamlit agent, and the Cosmos seed all use
+# DefaultAzureCredential (AAD). If 'az login' is missing or the ~/bin/az
+# wrapper can't mint tokens, services start but silently fail auth — this bit
+# us hard: the dup-resolver returned 500s and the L3 alias lookup 404'd. Fail
+# fast here with a clear message, and warm the tokens so the first request is
+# not slow. (Cosmos local/key auth is disabled by policy, so AAD is required.)
+# ---------------------------------------------------------------------------
+az account show >/dev/null 2>&1 || die "not logged in to Azure — run: az login"
+for res in https://cognitiveservices.azure.com https://cosmos.azure.com; do
+  az account get-access-token --resource "$res" --query expiresOn -o tsv >/dev/null 2>&1 \
+    || die "az cannot mint a token for $res — run 'az login' (and check the ~/bin/az wrapper)"
+done
+log "azure auth ✓ ($(az account show --query user.name -o tsv 2>/dev/null))"
+
+# ---------------------------------------------------------------------------
+# 0c. Ensure the governed Cosmos account is reachable + seeded.
+# Handles the MCAPS 'disable public network access' org policy (sets the
+# SecurityControl=Ignore exclusion tag, then allowlists this machine + APIM
+# egress) and seeds the canonical_map so L2 similarity + L3 alias rewrite
+# work. Idempotent: only issues the slow control-plane update when the
+# current network state does not already match.
+# ---------------------------------------------------------------------------
+if [[ "$SKIP_COSMOS" -eq 0 ]]; then
+  APIM_NAME="$APIM_NAME" APIM_RG="$APIM_RG" "$REPO/scripts/ensure-cosmos.sh" \
+    || die "ensure-cosmos.sh failed (see message above)"
+else
+  log "skipping Cosmos ensure/seed (--no-cosmos)"
 fi
 
 # ---------------------------------------------------------------------------
