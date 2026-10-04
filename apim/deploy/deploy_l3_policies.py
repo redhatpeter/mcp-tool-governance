@@ -13,7 +13,8 @@ Smoke variant differs from production only in:
     /dbs/governance/colls/mcp-canonical-map.
 
 Usage:
-    az login   # the caller needs APIM contributor on apimopenai992
+    az login   # the caller needs APIM contributor on the target APIM
+    # optional: APIM_SUBSCRIPTION_ID / APIM_RESOURCE_GROUP / APIM_SERVICE_NAME
     python3 apim/deploy/deploy_l3_policies.py
 
 Targets:
@@ -23,6 +24,7 @@ Targets:
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -31,9 +33,20 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 POL_DIR = REPO_ROOT / "apim" / "policies"
 
-SUBSCRIPTION_ID = "0028ca35-f331-410c-b0d8-f9ea74973a4d"
-RESOURCE_GROUP = "rg_apim"
-APIM_NAME = "apimopenai992"
+
+
+def _current_subscription() -> str:
+    out = subprocess.check_output(
+        ["az", "account", "show", "--query", "id", "-o", "tsv"], text=True
+    )
+    return out.strip().replace("\r", "")
+
+
+# Override with env vars to target a different APIM; the subscription
+# defaults to the one selected by `az account set`.
+SUBSCRIPTION_ID = os.environ.get("APIM_SUBSCRIPTION_ID") or _current_subscription()
+RESOURCE_GROUP = os.environ.get("APIM_RESOURCE_GROUP", "rg_apim")
+APIM_NAME = os.environ.get("APIM_SERVICE_NAME", "apimopenai992")
 API_VERSION = "2025-03-01-preview"
 
 TARGETS = ["governed-mcp", "messy-mcp"]

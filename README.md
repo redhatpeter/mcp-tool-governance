@@ -259,7 +259,7 @@ experience safer for the agent.**
 
 ## Target Azure environment
 
-Tenant `MngEnvMCAP339444`, subscription `0028ca35-f331-410c-b0d8-f9ea74973a4d`:
+Resources used by the reference deployment (substitute your own tenant and subscription):
 
 - APIM: `apimopenai992` (RG `rg_apim`, gateway `https://apimopenai992.azure-api.net`)
 - Azure OpenAI: `common-open-ai2` (RG `ml-rg`) — deployments `text-embedding-3-large` and `gpt-4.1-mini`

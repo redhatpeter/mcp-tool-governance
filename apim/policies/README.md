@@ -26,7 +26,7 @@ the MCP server. PoC pairing:
 - **Cosmos:** `cosmoslab826582` (RG `cosmos-ws`, westus) — DB `governance`, container `mcp-canonical-map` (PK `/canonical_id`, 400 RU/s)
 
 > **Status:** Pairing is **DONE**. The APIM system-assigned MI
-> `7a7d00cb-3d79-42a6-b146-55277a056a93` holds **Cosmos DB Built-in Data
+> (`az apim show -g rg_apim -n apimopenai992 --query identity.principalId`) holds **Cosmos DB Built-in Data
 > Reader** scoped to `/dbs/governance/colls/mcp-canonical-map`. Seed canonical_map
 > alias docs (`tools-cli/seed_canonical_map.py`) and run an ingest before smoke testing.
 
