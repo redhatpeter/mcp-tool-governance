@@ -13,7 +13,7 @@ Smoke variant differs from production only in:
     /dbs/governance/colls/mcp-canonical-map.
 
 Usage:
-    az login   # the caller needs APIM contributor on apimopenai99
+    az login   # the caller needs APIM contributor on apimopenai992
     python3 apim/deploy/deploy_l3_policies.py
 
 Targets:
@@ -31,9 +31,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 POL_DIR = REPO_ROOT / "apim" / "policies"
 
-SUBSCRIPTION_ID = "f5279601-4e81-4fe5-9b11-9d4ace3c40ca"
-RESOURCE_GROUP = "Default-ActivityLogAlerts"
-APIM_NAME = "apimopenai99"
+SUBSCRIPTION_ID = "0028ca35-f331-410c-b0d8-f9ea74973a4d"
+RESOURCE_GROUP = "rg_apim"
+APIM_NAME = "apimopenai992"
 API_VERSION = "2025-03-01-preview"
 
 TARGETS = ["governed-mcp", "messy-mcp"]

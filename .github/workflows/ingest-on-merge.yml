@@ -68,7 +68,7 @@ jobs:
         env:
           AOAI_ENDPOINT: ${{ secrets.AOAI_ENDPOINT }}
           # AOAI uses AAD via DefaultAzureCredential (azure/login above).
-          # Local auth is disabled by Azure Policy on common-open-ai.
+          # Local auth is disabled by Azure Policy on the Azure OpenAI account.
           AOAI_EMBEDDING_DEPLOYMENT: ${{ secrets.AOAI_EMBEDDING_DEPLOYMENT }}
           SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
           SEARCH_INDEX: ${{ secrets.SEARCH_INDEX }}

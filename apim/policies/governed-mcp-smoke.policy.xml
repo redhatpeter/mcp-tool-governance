@@ -2,12 +2,12 @@
   governed-mcp smoke policy
   ==========================
   Minimal MCP-server-level policy for the Tool Governance PoC. Apply via:
-    Portal -> apimopenai99 -> MCP Servers -> governed-mcp -> Policies blade
+    Portal -> apimopenai992 -> MCP Servers -> governed-mcp -> Policies blade
 
   STATUS (2026-05-08): This workaround DOES NOT WORK. Kept as evidence.
   See docs/lessons.md "APIM-MCP POST bug is *not* the empty-body bug".
   The <set-body> below mutates the JSON-RPC envelope that APIM-MCP itself
-  must parse to route the call, so all ops 500. Reverted on apimopenai99.
+  must parse to route the call, so all ops 500. Reverted on apimopenai992.
   Bug also reproduces on Basic v2 (West US) - filed as
   Azure-Samples/AI-Gateway issue #315.
 

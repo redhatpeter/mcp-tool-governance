@@ -74,6 +74,14 @@ jobs:
         working-directory: apps/dup-resolver
         run: python tests/test_verdict_tiers.py
 
+      - name: Canonical-map reconcile regression test
+        # Alias docs must survive reconcile(); config is loaded at import.
+        env:
+          AOAI_ENDPOINT: "https://placeholder.openai.azure.com"
+          SEARCH_ENDPOINT: "https://placeholder.search.windows.net"
+        working-directory: apps/dup-resolver
+        run: python tests/test_reconcile.py
+
   policy-contract:
     # Replays L3 Cosmos queries against the live canonical_map. Skipped
     # gracefully when secrets aren't available (forks / first-time PRs)

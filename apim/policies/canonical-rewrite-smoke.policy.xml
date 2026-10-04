@@ -9,11 +9,11 @@
   Source of truth: docs/ARCHITECTURE.md §15.
 
   Attach via ARM PUT (api-version=2024-06-01-preview) to:
-    .../service/apimopenai99/apis/governed-mcp/policies/policy
+    .../service/apimopenai992/apis/governed-mcp/policies/policy
 
   Prerequisites:
     - APIM system-assigned MI granted Cosmos data-plane read on
-      cosmoslab82658/governance/mcp-canonical-map.
+      cosmoslab826582/governance/mcp-canonical-map.
     - Canonical_map seeded via tools-cli/seed_canonical_map.py.
 -->
 <policies>
@@ -60,7 +60,7 @@
             <authentication-managed-identity resource="https://cosmos.azure.com"
                                              output-token-variable-name="cosmosAadToken" />
             <send-request mode="new" response-variable-name="cosmosResp" timeout="2" ignore-error="true">
-              <set-url>@($"https://cosmoslab82658.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs/{(string)context.Variables["requestedTool"]}")</set-url>
+              <set-url>@($"https://cosmoslab826582.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs/{(string)context.Variables["requestedTool"]}")</set-url>
               <set-method>GET</set-method>
               <set-header name="Authorization" exists-action="override">
                 <value>@("type=aad&amp;ver=1.0&amp;sig=" + (string)context.Variables["cosmosAadToken"])</value>

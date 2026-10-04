@@ -22,8 +22,8 @@ on `governed/mcp`, once on each `<domain>-raw/mcp`, etc.).
 The policy assumes the following are configured on the APIM instance hosting
 the MCP server. PoC pairing:
 
-- **APIM:** `apimopenai99` (RG `Default-ActivityLogAlerts`, eastus)
-- **Cosmos:** `cosmoslab82658` (RG `cosmos-ws`, westus) — DB `governance`, container `mcp-canonical-map` (PK `/canonical_id`, 400 RU/s)
+- **APIM:** `apimopenai992` (RG `rg_apim`, eastus)
+- **Cosmos:** `cosmoslab826582` (RG `cosmos-ws`, westus) — DB `governance`, container `mcp-canonical-map` (PK `/canonical_id`, 400 RU/s)
 
 > **Status (2026-05-08):** Pairing is **DONE**. APIM system-assigned MI
 > `29569271-d247-4907-a841-feb848f4016f` holds **Cosmos DB Built-in Data
@@ -35,8 +35,8 @@ The commands below are kept for reference / re-deploy in another environment.
 ### 1. APIM system-assigned managed identity
 
 ```bash
-APIM_NAME=apimopenai99
-APIM_RG=Default-ActivityLogAlerts
+APIM_NAME=apimopenai992
+APIM_RG=rg_apim
 
 az apim update -n "$APIM_NAME" -g "$APIM_RG" --set identity.type=SystemAssigned
 APIM_MI=$(az apim show -n "$APIM_NAME" -g "$APIM_RG" --query identity.principalId -o tsv)
@@ -46,7 +46,7 @@ echo "APIM MI: $APIM_MI"
 ### 2. Cosmos database, container, and data-plane role assignment
 
 ```bash
-COSMOS_ACCOUNT=cosmoslab82658
+COSMOS_ACCOUNT=cosmoslab826582
 COSMOS_RG=cosmos-ws
 
 # DB + container (PK /canonical_id, 400 RU/s shared throughput)
@@ -79,7 +79,7 @@ Before pasting into the Portal, replace these literal placeholders:
 |---|---|---|
 | `<tenant-id>` | Your Entra tenant GUID | Used in the OpenID metadata URL. |
 | `api://mcp-gateway` | Your registered API audience | The `aud` claim required on inbound JWTs. |
-| `cosmoslab82658.documents.azure.com` | Cosmos account hostname | Already set to the PoC pairing target. Change if you point at a different Cosmos account. |
+| `cosmoslab826582.documents.azure.com` | Cosmos account hostname | Already set to the PoC pairing target. Change if you point at a different Cosmos account. |
 
 For a production-grade flow these become **APIM Named Values** (or Key Vault
 references) and the policy uses `{{tenant-id}}` etc. — see ARCHITECTURE §24
@@ -170,7 +170,7 @@ locks the DUPLICATE / WARN / REVIEW / OK / INFO band boundaries plus
 four real-world cross-vendor REVIEW examples.
 
 **Live deployment status (2026-05-10):** both policies are attached to
-`governed-mcp` and `messy-mcp` on `apimopenai99`. Live captures:
+`governed-mcp` and `messy-mcp` on `apimopenai992`. Live captures:
 `messy-mcp/tools/list` → `x-mcp-tools-filtered: 3`;
 `messy-mcp/tools/call createCustomer` → `x-mcp-canonical-rewrite:
 createCustomer -> customerCreate`.
@@ -232,7 +232,7 @@ the merge is a packaging step.
 
 ## End-to-end walkthrough with live data
 
-Worked example using the actual rows in `cosmoslab82658 / governance /
+Worked example using the actual rows in `cosmoslab826582 / governance /
 mcp-canonical-map` and the actual operations in
 [`apim/openapi/finance-messy.json`](../openapi/finance-messy.json) as of
 2026-06-11. Every query in this section is copy-pasteable into the Cosmos
@@ -294,7 +294,7 @@ agent never sees an aggregate count.
 #### 1. Wire request
 
 ```http
-POST https://apimopenai99.azure-api.net/messy-mcp/mcp HTTP/1.1
+POST https://apimopenai992.azure-api.net/messy-mcp/mcp HTTP/1.1
 Ocp-Apim-Subscription-Key: <key>
 Content-Type: application/json
 
@@ -380,7 +380,7 @@ it. The rewrite layer rescues it.
 #### 1. Wire request
 
 ```http
-POST https://apimopenai99.azure-api.net/messy-mcp/mcp HTTP/1.1
+POST https://apimopenai992.azure-api.net/messy-mcp/mcp HTTP/1.1
 
 { "jsonrpc":"2.0","id":2,"method":"tools/call",
   "params": { "name":"createCustomer",

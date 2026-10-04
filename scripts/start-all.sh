@@ -28,8 +28,8 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND_PORT=8010
 RESOLVER_PORT=8089
 FRONTEND_PORT=8501
-APIM_NAME="apimopenai99"
-APIM_RG="Default-ActivityLogAlerts"
+APIM_NAME="apimopenai992"
+APIM_RG="rg_apim"
 APIM_APIS=(finance-api-governed finance-api-messy-anti-pattern-reference)
 
 SKIP_APIM=0

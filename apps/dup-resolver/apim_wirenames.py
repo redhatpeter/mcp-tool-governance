@@ -27,7 +27,7 @@ APIM_SUBSCRIPTION_ID   Azure subscription containing APIM.
 APIM_RESOURCE_GROUP    Resource group of the APIM instance.
 APIM_SERVICE_NAME      APIM service name. Defaults to the host
                        portion of APIM_GATEWAY_BASE
-                       (``apimopenai99.azure-api.net`` -> ``apimopenai99``).
+                       (``apimopenai992.azure-api.net`` -> ``apimopenai992``).
 
 Auth: DefaultAzureCredential (same OIDC path as the rest of ingest).
 """

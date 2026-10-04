@@ -33,7 +33,7 @@ cd apps/dup-resolver && source .venv/bin/activate \
 | `python3` | PATH | stdlib only, no pip installs needed for the demo itself |
 | `curl` | PATH | any version |
 | `/tmp/apim-master-key.txt` | local file | APIM master subscription key (raw, no whitespace). Get from Portal → APIM → Subscriptions → built-in all-access |
-| Gateway reachable | network | `https://apimopenai99.azure-api.net/governed-mcp/mcp` by default |
+| Gateway reachable | network | `https://apimopenai992.azure-api.net/governed-mcp/mcp` by default |
 | ngrok backend | optional | only needed if you want Act 3 to actually return a 200 body. Headers (which is what we read) come back regardless |
 | dup-resolver running | optional | Act 4 needs `http://127.0.0.1:8089` reachable. If it isn't, Act 4 falls back to captured local samples. |
 
@@ -66,7 +66,7 @@ cd apps/dup-resolver && source .venv/bin/activate \
 
 | Test | Pre-rewrite name | Header you'll see | What to say |
 |---|---|---|---|
-| **A** | `financeQuoteGet` | `x-mcp-canonical-rewrite: none (financeQuoteGet)` | *"Already canonical — gateway is a no-op. Proves we don't break the happy path."* |
+| **A** | `financeQuoteGet` | *(no `x-mcp-canonical-rewrite` header — it is only stamped when an alias is rewritten)* | *"Already canonical — gateway is a no-op. Proves we don't break the happy path."* |
 | **B** | `get_finance_quote` | `x-mcp-canonical-rewrite: get_finance_quote -> financeQuoteGet` | *"Legacy snake_case caller. Gateway looks up Cosmos, rewrites the JSON-RPC body, executes the canonical tool. Caller never knows."* |
 | **C** | `fetch_quote` | `x-mcp-canonical-rewrite: fetch_quote -> financeQuoteGet` | *"Different team's naming convention — same canonical underneath. This is how you onboard a federated tool catalog without breaking anyone."* |
 
@@ -99,7 +99,7 @@ cd apps/dup-resolver && source .venv/bin/activate \
 
 ### Bonus — Eval numbers (30 sec — the "so what")
 - *"Same model. Same 20 prompts. The only thing we changed was the tool surface."*
-- Point at the +30pp number: *"30 percentage points of agent accuracy. That's the dollar value of governance."*
+- Point at the lift number (currently +41.7 pp in `eval/results/summary.md`): *"That many percentage points of agent accuracy. That's the dollar value of governance."*
 - *"And remember — the messy 60% wasn't catastrophically broken. It looked fine. That's the trap."*
 
 ### Closing (15 sec)
@@ -112,7 +112,7 @@ cd apps/dup-resolver && source .venv/bin/activate \
 
 | Symptom | Fix |
 |---|---|
-| `missing /tmp/apim-master-key.txt` | `az rest --method post --url ".../service/apimopenai99/subscriptions/master/listSecrets?api-version=2024-06-01-preview" --headers "Content-Length=0" --query primaryKey -o tsv > /tmp/apim-master-key.txt` |
+| `missing /tmp/apim-master-key.txt` | `az rest --method post --url ".../service/apimopenai992/subscriptions/master/listSecrets?api-version=2024-06-01-preview" --headers "Content-Length=0" --query primaryKey -o tsv > /tmp/apim-master-key.txt` |
 | Act 3 returns no headers | Gateway is down OR policy was detached. Check Portal → MCP Servers → governed-mcp → Policies. Re-paste from `apim/policies/canonical-rewrite-smoke.policy.xml`. |
 | Act 3 returns `502` / `504` | ngrok backend is down. Headers still appear though, which is what the demo reads. Demo continues to work. |
 | Act 3 returns `404 Resource Not Found` for the alias | The alias isn't in Cosmos. Re-seed: `python3 tools-cli/seed_canonical_map.py` |

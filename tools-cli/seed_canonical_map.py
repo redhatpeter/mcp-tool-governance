@@ -1,6 +1,6 @@
 """Seed canonical_map documents into Cosmos for the MCP Tool Governance PoC.
 
-Target: cosmoslab82658 / governance / mcp-canonical-map (PK /canonical_id).
+Target: cosmoslab826582 / governance / mcp-canonical-map (PK /canonical_id).
 Auth:   DefaultAzureCredential (uses your `az login`).
 
 Document shape matches what apim/policies/canonical-rewrite.policy.xml expects.
@@ -31,7 +31,7 @@ from azure.cosmos import CosmosClient, PartitionKey, exceptions
 from azure.identity import DefaultAzureCredential
 
 ACCOUNT_URL = os.environ.get(
-    "COSMOS_ACCOUNT_URL", "https://cosmoslab82658.documents.azure.com:443/"
+    "COSMOS_ACCOUNT_URL", "https://cosmoslab826582.documents.azure.com:443/"
 )
 DATABASE = os.environ.get("COSMOS_DATABASE", "governance")
 CONTAINER = os.environ.get("COSMOS_CONTAINER", "mcp-canonical-map")
@@ -47,7 +47,7 @@ def _fqid(name: str) -> str:
     return f"{SERVER}__{name}"
 
 # --------------------------------------------------------------------------- #
-# Canonical map for the GET-only smoke demo on apimopenai99 / governed-mcp.
+# Canonical map for the GET-only smoke demo on apimopenai992 / governed-mcp.
 #
 # Wire names (what APIM-MCP actually exposes after camelCasing the OpenAPI
 # operation summaries) for the 5 GET ops in finance-governed.json:

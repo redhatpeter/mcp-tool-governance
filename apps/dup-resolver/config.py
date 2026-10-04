@@ -46,7 +46,7 @@ def search_credential():
     return credential()
 
 # --- APIM source of truth ---
-APIM_GATEWAY_BASE = _env("APIM_GATEWAY_BASE", "https://apimopenai99.azure-api.net")
+APIM_GATEWAY_BASE = _env("APIM_GATEWAY_BASE", "https://apimopenai992.azure-api.net")
 # Auth precedence: APIM_KEY env var > APIM_KEY_FILE path
 APIM_KEY = _env("APIM_KEY", "")
 APIM_KEY_FILE = _env("APIM_KEY_FILE", "/tmp/apim-master-key.txt")

@@ -7,10 +7,11 @@ judgment. This repo enforces canonical naming, alias rewriting, JWT
 validation, and rate limiting at the APIM edge, with no custom MCP server
 containers required.
 
-> Companion article: *"When Every API Becomes an Agent Tool: Why MCP
-> Governance Matters."* This repo is the hands-on reference for the
-> L1/L2/L3 workflow, the governed-vs-messy MCP surfaces, and the runtime
-> rewrite/filter pattern described there.
+> For more detail, see Peter Lee's blog article,
+> [*When Every API Becomes an Agent Tool: Why MCP Governance Matters*](https://redhatpeter.github.io/posts/when-every-api-becomes-an-agent-tool/).
+> This repo is the hands-on reference for the L1/L2/L3 workflow, the
+> governed-vs-messy MCP surfaces, and the runtime rewrite/filter pattern
+> described there.
 
 ## Why this exists
 
@@ -32,6 +33,8 @@ auditability. Five failure patterns show up as catalogs grow:
    can appear to the agent as `financeQuoteGet` after APIM normalization, so
    policies keyed only on the authored name miss the runtime call.
 
+![MCP tool governance runtime and governance plane architecture](assets/mcp-tool-governance-architecture.png)
+
 ## Two connected planes
 
 - **Governance plane** — validates, deduplicates, classifies, and
@@ -44,7 +47,7 @@ auditability. Five failure patterns show up as catalogs grow:
 ## Status
 
 PoC complete. **All three layers shipped and live** against the
-`apimopenai99` APIM instance + Azure OpenAI + Azure AI Search + Cosmos.
+`apimopenai992` APIM instance + Azure OpenAI + Azure AI Search + Cosmos.
 
 Snapshot of what's running:
 
@@ -62,6 +65,129 @@ the last property of `params.arguments` as a raw scalar to the backend
 (regression of `release-service-2026-03`). Tracked at
 [Azure-Samples/AI-Gateway#315](https://github.com/Azure-Samples/AI-Gateway/issues/315).
 Reproduces with all custom policies stripped — the governance layer is innocent.
+
+## Run and test
+
+### Choose a test path
+
+| Goal | Azure required? | Typical time | Start here |
+| --- | --- | --- | --- |
+| Validate lint and regression logic | No | 2–5 minutes | [Local validation](#1-local-validation) |
+| Walk through the CLI demo | Yes — APIM | 5 minutes | [CLI demo](#2-five-minute-cli-demo) |
+| Explore the visual comparison | Yes — APIM + Azure OpenAI | 10 minutes | [Streamlit UI](#3-streamlit-ui) |
+
+> [!TIP]
+> New contributors should begin with **Local validation**. It is the fastest
+> path and does not require Azure credentials.
+
+### 1. Local validation
+
+**Prerequisite:** Python 3.10 or later.
+
+#### Run the L1 catalog lint
+
+From the repository root:
+
+```bash
+python3 tools-cli/lint.py --no-warn
+```
+
+This checks every managed OpenAPI specification for naming, collision, and
+schema-quality problems.
+
+#### Run the L2/L3 regression tests
+
+Create a virtual environment and install the duplicate resolver dependencies:
+
+```bash
+python3 -m venv apps/dup-resolver/.venv
+apps/dup-resolver/.venv/bin/pip install \
+  -r apps/dup-resolver/requirements.txt
+```
+
+Run the regression suites:
+
+```bash
+AOAI_ENDPOINT=https://placeholder.openai.azure.com \
+SEARCH_ENDPOINT=https://placeholder.search.windows.net \
+  apps/dup-resolver/.venv/bin/python \
+  apps/dup-resolver/tests/test_wirename_resolution.py
+
+AOAI_ENDPOINT=https://placeholder.openai.azure.com \
+SEARCH_ENDPOINT=https://placeholder.search.windows.net \
+  apps/dup-resolver/.venv/bin/python \
+  apps/dup-resolver/tests/test_verdict_tiers.py
+
+AOAI_ENDPOINT=https://placeholder.openai.azure.com \
+SEARCH_ENDPOINT=https://placeholder.search.windows.net \
+  apps/dup-resolver/.venv/bin/python \
+  apps/dup-resolver/tests/test_reconcile.py
+```
+
+> [!NOTE]
+> The placeholder endpoints only satisfy configuration validation. These
+> regression tests do not connect to Azure.
+
+### 2. Five-minute CLI demo
+
+**Prerequisites**
+
+- `bash`, `curl`, and network access to the deployed APIM gateway
+- An APIM subscription key stored as raw text in
+  `/tmp/apim-master-key.txt`
+
+> [!IMPORTANT]
+> Keep the subscription key local. Never commit it to this repository.
+
+Run the interactive walkthrough from the repository root:
+
+```bash
+./demo/run-demo.sh
+```
+
+The script pauses between each act. To run it without pauses:
+
+```bash
+AUTO=1 ./demo/run-demo.sh
+```
+
+The L2 semantic-deduplication act uses a local duplicate resolver when
+available. Otherwise, it falls back to captured sample data. See
+[`demo/README.md`](demo/README.md) for gateway overrides, detailed
+prerequisites, and the recovery playbook.
+
+### 3. Streamlit UI
+
+**Prerequisites**
+
+- Access to the deployed APIM and Azure OpenAI resources
+- An APIM subscription key
+- Azure CLI authenticated with `az login`
+
+Install and launch the UI:
+
+```bash
+python3 -m venv frontend/.venv
+frontend/.venv/bin/pip install -r frontend/requirements.txt
+az login
+
+cd frontend
+export APIM_KEY="<your-APIM-subscription-key>"
+.venv/bin/streamlit run app.py
+```
+
+Then open **<http://localhost:8501>**.
+
+| Setting | When to change it |
+| --- | --- |
+| `APIM_BASE` | You are using a gateway other than the default |
+| `AOAI_ENDPOINT` | You are using a different Azure OpenAI resource |
+| `AOAI_DEPLOYMENT` | Your chat-model deployment has a different name |
+
+The L2 similarity tab also requires the duplicate resolver on port `8089`.
+See [`frontend/README.md`](frontend/README.md) and
+[`apps/dup-resolver/README.md`](apps/dup-resolver/README.md) for its setup and
+configuration.
 
 ## How it works (L1 / L2 / L3)
 
@@ -103,7 +229,7 @@ experience safer for the agent.**
 ├── apps/
 │   └── dup-resolver/      # L2 — embed, cluster, elect, write canonical_map (+ FastAPI for demo)
 ├── demo/                  # 5-minute push-button walkthrough script
-├── eval/                  # before/after harness (governed vs messy, +30pp lift on pre-L3 data)
+├── eval/                  # before/after harness (governed vs messy, +41.7pp lift, gpt-4o-mini baseline)
 ├── frontend/              # chat UI for the governed-vs-messy comparison
 ├── tools-cli/             # L1 lint (tools-cli/lint.py)
 └── .github/workflows/     # validate-mcp-tools, similarity-check, ingest-on-merge,
@@ -133,6 +259,9 @@ experience safer for the agent.**
 
 ## Target Azure environment
 
-- APIM: `<apim-instance>` (gateway: `https://<apim-gateway-host>`)
-- Reused: AI Search `ai102srch193837986`, Cosmos `cosmos-ws`, existing Azure OpenAI
-- New RG for PoC: `MCP-tool-governance`
+Tenant `MngEnvMCAP339444`, subscription `0028ca35-f331-410c-b0d8-f9ea74973a4d`:
+
+- APIM: `apimopenai992` (RG `rg_apim`, gateway `https://apimopenai992.azure-api.net`)
+- Azure OpenAI: `common-open-ai2` (RG `ml-rg`) — deployments `text-embedding-3-large` and `gpt-4.1-mini`
+- Cosmos DB: `cosmoslab826582` (RG `cosmos-ws`) — `governance/mcp-canonical-map`
+- AI Search: `ai102srch193837986-mig` (RG `rg-general-ai`, API-key auth) — index `mcp-tool-fingerprints`

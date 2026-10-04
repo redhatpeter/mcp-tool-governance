@@ -14,11 +14,11 @@ Outputs:
   eval/results/summary.md    — per-config correct-tool rate + lift
 
 Env vars (set or supply via .env):
-  AOAI_ENDPOINT          e.g. https://common-open-ai.openai.azure.com
-  AOAI_DEPLOYMENT        deployment name (default: gpt-4o-mini)
+  AOAI_ENDPOINT          e.g. https://common-open-ai2.openai.azure.com
+  AOAI_DEPLOYMENT        deployment name (default: gpt-4.1-mini)
   AOAI_API_VERSION       default: 2024-10-21
   APIM_KEY               APIM subscription key
-  APIM_BASE              e.g. https://apimopenai99.azure-api.net
+  APIM_BASE              e.g. https://apimopenai992.azure-api.net
   EVAL_RUNS              runs per prompt (default: 3)
 
 Auth: Azure OpenAI via DefaultAzureCredential (your `az login`). No keys.
@@ -45,10 +45,10 @@ ROOT = Path(__file__).parent
 RESULTS = ROOT / "results"
 RESULTS.mkdir(exist_ok=True)
 
-AOAI_ENDPOINT = os.environ.get("AOAI_ENDPOINT", "https://common-open-ai.openai.azure.com")
-AOAI_DEPLOYMENT = os.environ.get("AOAI_DEPLOYMENT", "gpt-4o-mini")
+AOAI_ENDPOINT = os.environ.get("AOAI_ENDPOINT", "https://common-open-ai2.openai.azure.com")
+AOAI_DEPLOYMENT = os.environ.get("AOAI_DEPLOYMENT", "gpt-4.1-mini")
 AOAI_API_VERSION = os.environ.get("AOAI_API_VERSION", "2024-10-21")
-APIM_BASE = os.environ.get("APIM_BASE", "https://apimopenai99.azure-api.net")
+APIM_BASE = os.environ.get("APIM_BASE", "https://apimopenai992.azure-api.net")
 APIM_KEY = os.environ.get("APIM_KEY") or Path("/tmp/apim-master-key.txt").read_text().strip()
 RUNS = int(os.environ.get("EVAL_RUNS", "3"))
 MAX_TURNS = int(os.environ.get("EVAL_MAX_TURNS", "3"))

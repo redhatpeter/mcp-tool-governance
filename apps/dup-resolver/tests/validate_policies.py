@@ -11,7 +11,7 @@ the policy XML to APIM. Run after every change to either:
 
 Usage:
     cd apps/dup-resolver && source .venv/bin/activate
-    export COSMOS_ENDPOINT=https://cosmoslab82658.documents.azure.com:443/
+    export COSMOS_ENDPOINT=https://cosmoslab826582.documents.azure.com:443/
     python3 tests/validate_policies.py
 
 Exit codes:

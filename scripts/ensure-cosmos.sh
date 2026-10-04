@@ -27,10 +27,10 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
-COSMOS_ACCOUNT="${COSMOS_ACCOUNT:-cosmoslab82658}"
+COSMOS_ACCOUNT="${COSMOS_ACCOUNT:-cosmoslab826582}"
 COSMOS_RG="${COSMOS_RG:-cosmos-ws}"
-APIM_NAME="${APIM_NAME:-apimopenai99}"
-APIM_RG="${APIM_RG:-Default-ActivityLogAlerts}"
+APIM_NAME="${APIM_NAME:-apimopenai992}"
+APIM_RG="${APIM_RG:-rg_apim}"
 TAG_NAME="${COSMOS_EXCLUSION_TAG_NAME:-SecurityControl}"
 TAG_VALUE="${COSMOS_EXCLUSION_TAG_VALUE:-Ignore}"
 

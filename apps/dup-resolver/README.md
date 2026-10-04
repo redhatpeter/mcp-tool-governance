@@ -96,14 +96,14 @@ cp .env.example .env    # fill in endpoints/keys (RBAC preferred — see below)
 
 | Var | Example |
 |---|---|
-| `AOAI_ENDPOINT` | `https://common-open-ai.openai.azure.com/` |
+| `AOAI_ENDPOINT` | `https://common-open-ai2.openai.azure.com/` |
 | `AOAI_EMBEDDING_DEPLOYMENT` | `text-embedding-3-large` |
-| `SEARCH_ENDPOINT` | `https://ai102srch193837986.search.windows.net` |
+| `SEARCH_ENDPOINT` | `https://ai102srch193837986-mig.search.windows.net` |
 | `SEARCH_INDEX` | `mcp-tool-fingerprints` |
-| `APIM_GATEWAY_BASE` | `https://apimopenai99.azure-api.net` |
+| `APIM_GATEWAY_BASE` | `https://apimopenai992.azure-api.net` |
 | `APIM_KEY_FILE` | `/tmp/apim-master-key.txt` |
 | `MCP_SERVERS` | `governed-mcp,messy-mcp` |
-| `MCP_SOURCE` | `apim` (default) or `openapi` (read specs from `apim/openapi/*.json`) |
+| `MCP_SOURCE` | `apim` (default) or `openapi` (read specs from `apim/openapi/*.json`). **Use `openapi` once L3 is deployed:** the gateway's `tools/list` filter hides duplicates using the same canonical map ingest writes, so a gateway-sourced ingest sees a shrinking catalog. |
 | `OPENAPI_SPEC_DIR` | `apim/openapi` (used when `MCP_SOURCE=openapi`) |
 | `CLUSTER_THRESHOLD` | `0.88` default; see *Threshold tuning* below |
 | `REVIEW_THRESHOLD` | `0.65` default; soft "reviewer should look at this" tier — see *Threshold tuning* |
@@ -188,7 +188,7 @@ exit 0), and multi-file-pr (two specs in one PR).
 ## Performance budget — what "normal" looks like
 
 Numbers below are from a warm AOAI deployment (`text-embedding-3-large`,
-eastus) and AI Search (`ai102srch193837986`). Use these as triage
+eastus) and AI Search (`ai102srch193837986-mig`). Use these as triage
 anchors: a 5× regression on any line is worth investigating before
 chalking it up to network jitter.
 
@@ -333,7 +333,7 @@ After clustering and electing a canonical per cluster, ingest writes one
 document per cluster to a Cosmos SQL container so L3 (runtime APIM
 policy, future) can point-read the decision without re-running L2.
 
-**Container:** `governance.mcp-canonical-map` on `cosmoslab82658`,
+**Container:** `governance.mcp-canonical-map` on `cosmoslab826582`,
 partitioned by `/canonical_id`.
 
 **Schema (one doc per cluster):**
@@ -360,7 +360,7 @@ partitioned by `/canonical_id`.
 
 ```bash
 # .env (or export)
-COSMOS_ENDPOINT=https://cosmoslab82658.documents.azure.com:443/
+COSMOS_ENDPOINT=https://cosmoslab826582.documents.azure.com:443/
 COSMOS_DATABASE=governance
 COSMOS_CONTAINER=mcp-canonical-map
 # Auth precedence — first match wins:
@@ -369,14 +369,14 @@ COSMOS_CONTAINER=mcp-canonical-map
 #   DefaultAzureCredential                       [requires AAD data-plane RBAC]
 ```
 
-`cosmoslab82658` has **local auth disabled by Azure Policy**, so
+`cosmoslab826582` has **local auth disabled by Azure Policy**, so
 production / CI will use the AAD path. The principal needs `Cosmos DB
 Built-in Data Contributor` (`00000000-0000-0000-0000-000000000002`) at
 account scope or tighter:
 
 ```bash
 PRINCIPAL=$(az ad signed-in-user show --query id -o tsv)
-az cosmosdb sql role assignment create -a cosmoslab82658 -g cosmos-ws \
+az cosmosdb sql role assignment create -a cosmoslab826582 -g cosmos-ws \
   --role-definition-id 00000000-0000-0000-0000-000000000002 \
   --principal-id "$PRINCIPAL" \
   --scope "/"
@@ -407,7 +407,7 @@ expected canonical / drop-set behavior:
 
 ```bash
 cd apps/dup-resolver && source .venv/bin/activate
-export COSMOS_ENDPOINT=https://cosmoslab82658.documents.azure.com:443/
+export COSMOS_ENDPOINT=https://cosmoslab826582.documents.azure.com:443/
 python3 ingest.py >/dev/null   # populate the map
 python3 tests/validate_policies.py
 ```

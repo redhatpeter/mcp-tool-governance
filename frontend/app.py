@@ -58,10 +58,10 @@ PROMPTS_PATH = REPO_ROOT / "eval" / "prompts.yaml"
 # Load frontend/.env (does not override pre-set env vars)
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
-APIM_BASE = os.environ.get("APIM_BASE", "https://apimopenai99.azure-api.net")
+APIM_BASE = os.environ.get("APIM_BASE", "https://apimopenai992.azure-api.net")
 APIM_KEY_FILE = os.environ.get("APIM_KEY_FILE", "/tmp/apim-master-key.txt")
-AOAI_ENDPOINT = os.environ.get("AOAI_ENDPOINT", "https://common-open-ai.openai.azure.com")
-AOAI_DEPLOYMENT = os.environ.get("AOAI_DEPLOYMENT", "gpt-4o-mini")
+AOAI_ENDPOINT = os.environ.get("AOAI_ENDPOINT", "https://common-open-ai2.openai.azure.com")
+AOAI_DEPLOYMENT = os.environ.get("AOAI_DEPLOYMENT", "gpt-4.1-mini")
 AOAI_API_VERSION = os.environ.get("AOAI_API_VERSION", "2024-10-21")
 RESOLVER_URL = os.environ.get("RESOLVER_URL", "http://127.0.0.1:8089")
 MAX_TURNS = int(os.environ.get("EVAL_MAX_TURNS", "3"))

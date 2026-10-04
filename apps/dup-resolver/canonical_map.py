@@ -210,7 +210,9 @@ def reconcile(active_canonical_ids: Iterable[str]) -> dict[str, Any]:
         query="SELECT c.id, c.canonical_id FROM c",
         enable_cross_partition_query=True,
     ))
-    stale = [d for d in existing if d["id"] not in active]
+    # Alias docs have their own id but share the canonical's partition key,
+    # so staleness is decided by canonical_id, not id.
+    stale = [d for d in existing if d.get("canonical_id", d["id"]) not in active]
     deleted = 0
     failures: list[str] = []
     for d in stale:

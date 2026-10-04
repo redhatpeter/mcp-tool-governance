@@ -118,7 +118,7 @@ def _tokenize_summary(summary: str) -> list[str]:
 
 
 def camel_case_wire_name(summary: str) -> str:
-    """Mirror APIM-MCP's normalization rule (verified against apimopenai99
+    """Mirror APIM-MCP's normalization rule (verified against apimopenai992
     governed-mcp + messy-mcp tools/list, 2026-05-08):
 
       1. Split the summary on any non-identifier character (_, -, space, .).

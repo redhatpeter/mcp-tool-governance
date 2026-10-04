@@ -22,7 +22,7 @@ done
 
 BACKEND_PORT=8010
 RESOLVER_PORT=8089
-COSMOS_ACCOUNT="${COSMOS_ACCOUNT:-cosmoslab82658}"
+COSMOS_ACCOUNT="${COSMOS_ACCOUNT:-cosmoslab826582}"
 COSMOS_RG="${COSMOS_RG:-cosmos-ws}"
 
 log "stopping streamlit (port 8501)"

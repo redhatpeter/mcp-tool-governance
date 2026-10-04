@@ -39,11 +39,11 @@ Then open http://localhost:8501.
 
 | Var | Default |
 |-----|---------|
-| `APIM_BASE` | `https://apimopenai99.azure-api.net` |
+| `APIM_BASE` | `https://apimopenai992.azure-api.net` |
 | `APIM_KEY` | _(falls back to `APIM_KEY_FILE`)_ |
 | `APIM_KEY_FILE` | `/tmp/apim-master-key.txt` |
-| `AOAI_ENDPOINT` | `https://common-open-ai.openai.azure.com` |
-| `AOAI_DEPLOYMENT` | `gpt-4o-mini` |
+| `AOAI_ENDPOINT` | `https://common-open-ai2.openai.azure.com` |
+| `AOAI_DEPLOYMENT` | `gpt-4.1-mini` |
 | `AOAI_API_VERSION` | `2024-10-21` |
 | `RESOLVER_URL` | `http://127.0.0.1:8089` |
 | `EVAL_MAX_TURNS` | `3` |

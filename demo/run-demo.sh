@@ -7,7 +7,7 @@
 #   Act 2: L1 design-time   — lint the governed spec (0 errors)
 #   Act 3: L3 runtime       — three live curls show canonical-rewrite working
 #   Act 4: L2 semantic dup  — AI-Search-backed /clusters + /similarity
-#   Bonus: the eval numbers — +30pp lift on tool-selection accuracy
+#   Bonus: the eval numbers — governed-vs-messy lift on tool-selection accuracy
 #
 # Press ENTER between acts. Ctrl-C any time.
 #
@@ -28,7 +28,7 @@ set -u
 
 # ---- config ---------------------------------------------------------------
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GATEWAY_URL="${GATEWAY_URL:-https://apimopenai99.azure-api.net/governed-mcp/mcp}"
+GATEWAY_URL="${GATEWAY_URL:-https://apimopenai992.azure-api.net/governed-mcp/mcp}"
 KEY_FILE="${KEY_FILE:-/tmp/apim-master-key.txt}"
 EVAL_SUMMARY="${EVAL_SUMMARY:-$REPO_ROOT/eval/results/summary.md}"
 RESOLVER_URL="${RESOLVER_URL:-http://127.0.0.1:8089}"
@@ -251,8 +251,13 @@ bonus_eval() {
     say "${YELLOW}eval summary not found at $EVAL_SUMMARY — skipping${RESET}"
   fi
   echo
+  local lift="" lift_text="a large share of"
+  if [[ -f "$EVAL_SUMMARY" ]]; then
+    lift="$(grep -oE '[+-][0-9]+(\.[0-9]+)? percentage points' "$EVAL_SUMMARY" | head -1 | sed -E 's/^[+-]//; s/ percentage points//')"
+  fi
+  [[ -n "$lift" ]] && lift_text="$lift percentage points of"
   say "Translation for the customer:"
-  say "  ${BOLD}A messy MCP surface costs you 30 percentage points of agent accuracy.${RESET}"
+  say "  ${BOLD}A messy MCP surface costs you ${lift_text} agent accuracy.${RESET}"
   say "  ${BOLD}Governance is not theatre — it directly moves the eval needle.${RESET}"
   echo
 }

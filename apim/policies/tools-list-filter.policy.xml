@@ -34,7 +34,7 @@
     {{server-name}}        MCP server name as it appears in the doc_id prefix
                            (e.g. "governed-mcp" or "messy-mcp"). Used to scope
                            the canonical_map query to this server.
-    cosmoslab82658         Cosmos account host. Already targeted at the PoC
+    cosmoslab826582         Cosmos account host. Already targeted at the PoC
                            pairing; change for other environments.
 
   TELEMETRY
@@ -83,7 +83,7 @@
                      `aliases` array from each. -->
                 <send-request mode="new" response-variable-name="cosmosResp"
                               timeout="2" ignore-error="true">
-                  <set-url>@($"https://cosmoslab82658.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs")</set-url>
+                  <set-url>@($"https://cosmoslab826582.documents.azure.com/dbs/governance/colls/mcp-canonical-map/docs")</set-url>
                   <set-method>POST</set-method>
                   <set-header name="Authorization" exists-action="override">
                     <value>@("type=aad&amp;ver=1.0&amp;sig=" + (string)context.Variables["cosmosAadToken"])</value>
