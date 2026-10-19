@@ -132,8 +132,11 @@ class _SerializedTokenProvider:
 
 @st.cache_resource(show_spinner=False)
 def get_openai_client() -> AzureOpenAI:
+    # `az` runs through WSL interop and can take well over the SDK's 10s
+    # default under load, which surfaces as "Failed to invoke the Azure CLI".
     token_provider = _SerializedTokenProvider(
-        DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+        DefaultAzureCredential(process_timeout=60),
+        "https://cognitiveservices.azure.com/.default",
     )
     return AzureOpenAI(
         azure_endpoint=AOAI_ENDPOINT,

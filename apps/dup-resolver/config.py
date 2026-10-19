@@ -88,7 +88,8 @@ def cosmos_key() -> str:
 
 @lru_cache(maxsize=1)
 def credential() -> DefaultAzureCredential:
-    return DefaultAzureCredential()
+    # `az` via WSL interop can exceed the SDK's 10s default under load.
+    return DefaultAzureCredential(process_timeout=60)
 
 
 def apim_subscription_key() -> str:
