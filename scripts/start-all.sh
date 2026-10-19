@@ -207,7 +207,7 @@ nohup streamlit run app.py \
   > /tmp/streamlit.log 2>&1 & disown
 deactivate
 for i in {1..15}; do
-  if curl -fsS -o /dev/null "http://127.0.0.1:$FRONTEND_PORT/_stcore/health"; then
+  if curl -fsS -o /dev/null "http://127.0.0.1:$FRONTEND_PORT/_stcore/health" 2>/dev/null; then
     log "  streamlit ✓"
     break
   fi
@@ -220,7 +220,7 @@ done
 # ---------------------------------------------------------------------------
 cat <<EOF
 
-\033[1;32m✓ All services up\033[0m
+$(printf "\033[1;32m✓ All services up\033[0m")
   UI         http://localhost:$FRONTEND_PORT
   Resolver   http://127.0.0.1:$RESOLVER_PORT/healthz
   Backend    http://127.0.0.1:$BACKEND_PORT/docs

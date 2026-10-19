@@ -52,9 +52,30 @@ az_retry() {
   local n=0 max=4 out rc
   while :; do
     out="$("$@" 2>/tmp/ensure-cosmos.err)"; rc=$?
-    if [[ $rc -eq 0 ]]; then printf '%s' "$out"; return 0; fi
+    if [[ $rc -eq 0 ]]; then printf '%s' "${out//$'\r'/}"; return 0; fi
     n=$((n+1)); (( n >= max )) && { cat /tmp/ensure-cosmos.err >&2; return "$rc"; }
     sleep 2
+  done
+}
+
+# Cosmos holds an exclusive lock for minutes after the tag update or another
+# control-plane change, so a short retry isn't enough: wait it out (~10 min).
+update_firewall() {
+  local n=0 max=30 out
+  while :; do
+    if out="$(az cosmosdb update -n "$COSMOS_ACCOUNT" -g "$COSMOS_RG" \
+                --public-network-access ENABLED --ip-range-filter "$DESIRED" -o none 2>&1)"; then
+      return 0
+    fi
+    if [[ "$out" == *"exclusive lock"* || "$out" == *"operation in progress"* ]]; then
+      n=$((n+1))
+      if (( n >= max )); then printf '%s\n' "$out" >&2; return 1; fi
+      if (( n == 1 )); then log "Cosmos is busy with another operation; waiting for it to finish (up to ~10 min)"; fi
+      sleep 20
+      continue
+    fi
+    printf '%s\n' "$out" >&2
+    return 1
   done
 }
 
@@ -116,8 +137,7 @@ if [[ "$CUR_PNA" == "Enabled" && "$CUR_RULES" == "$DESIRED" ]]; then
   log "network already correct (Enabled; allowlist: ${DESIRED}) — skipping update"
 else
   log "updating firewall: publicNetworkAccess=Enabled, allowlist=${DESIRED} (this can take a few minutes)"
-  az_retry az cosmosdb update -n "$COSMOS_ACCOUNT" -g "$COSMOS_RG" \
-    --public-network-access ENABLED --ip-range-filter "$DESIRED" -o none \
+  update_firewall \
     || die "cosmosdb update failed — if publicNetworkAccess snapped back, confirm the ${TAG_NAME}=${TAG_VALUE} tag stuck"
   FINAL_PNA="$(az_retry az cosmosdb show -n "$COSMOS_ACCOUNT" -g "$COSMOS_RG" --query "publicNetworkAccess" -o tsv)"
   [[ "$FINAL_PNA" == "Enabled" ]] \
