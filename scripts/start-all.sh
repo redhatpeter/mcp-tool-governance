@@ -84,7 +84,7 @@ for res in https://cognitiveservices.azure.com https://cosmos.azure.com; do
   az account get-access-token --resource "$res" --query expiresOn -o tsv >/dev/null 2>&1 \
     || die "az cannot mint a token for $res — run 'az login' (and check the ~/bin/az wrapper)"
 done
-log "azure auth ✓ ($(az account show --query user.name -o tsv 2>/dev/null))"
+log "azure auth ✓ ($(az account show --query user.name -o tsv 2>/dev/null | tr -d "\r"))"
 
 # ---------------------------------------------------------------------------
 # 0c. Ensure the governed Cosmos account is reachable + seeded.
