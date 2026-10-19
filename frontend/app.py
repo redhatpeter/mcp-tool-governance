@@ -35,6 +35,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -44,7 +45,7 @@ from typing import Any
 import requests
 import streamlit as st
 import yaml
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 from openai import AzureOpenAI
 
@@ -95,11 +96,44 @@ def get_apim_key() -> str:
     )
 
 
+class _SerializedTokenProvider:
+    """Thread-safe, caching bearer-token provider.
+
+    The Headline tab runs both servers in parallel threads. Without this,
+    each thread spawns its own `az account get-access-token`, and the CLI's
+    MSAL token-cache lock file rejects the second process ("Permission
+    denied ... msal_token_cache.bin.lockfile"). One lock + a cached token
+    means `az` runs at most once per token lifetime.
+    """
+
+    _REFRESH_SKEW_S = 300
+
+    def __init__(self, credential: DefaultAzureCredential, scope: str) -> None:
+        self._credential = credential
+        self._scope = scope
+        self._lock = threading.Lock()
+        self._token = None
+
+    def __call__(self) -> str:
+        with self._lock:
+            if self._token is None or self._token.expires_on - time.time() < self._REFRESH_SKEW_S:
+                self._token = self._fetch()
+            return self._token.token
+
+    def _fetch(self):
+        for attempt in range(3):
+            try:
+                return self._credential.get_token(self._scope)
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(1.5)
+
+
 @st.cache_resource(show_spinner=False)
 def get_openai_client() -> AzureOpenAI:
-    cred = DefaultAzureCredential()
-    token_provider = get_bearer_token_provider(
-        cred, "https://cognitiveservices.azure.com/.default"
+    token_provider = _SerializedTokenProvider(
+        DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
     )
     return AzureOpenAI(
         azure_endpoint=AOAI_ENDPOINT,
