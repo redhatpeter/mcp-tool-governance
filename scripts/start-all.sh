@@ -49,6 +49,8 @@ die() { printf "\033[1;31m[start-all]\033[0m %s\n" "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 # 0. preflight
 # ---------------------------------------------------------------------------
+# snap installs ngrok to /snap/bin, which non-login shells often lack.
+[[ -d /snap/bin && ":$PATH:" != *":/snap/bin:"* ]] && export PATH="$PATH:/snap/bin"
 command -v ngrok >/dev/null || die "ngrok not on PATH (snap install ngrok)"
 command -v az >/dev/null    || die "az CLI not on PATH"
 
